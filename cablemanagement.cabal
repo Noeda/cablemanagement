@@ -1,0 +1,60 @@
+name:                cablemanagement
+version:             0.1.0.0
+synopsis:            Cable Management The Roguelike
+license:             ISC
+license-file:        LICENSE
+author:              Mikko Juola
+maintainer:          mikjuo@gmail.com
+category:            Game
+build-type:          Simple
+extra-source-files:  ChangeLog.md
+cabal-version:       >=1.10
+
+library
+  exposed-modules:     CM.Coords
+                       CM.LevelLike
+                       CM.ArrayLevel
+                       CM.ImapLevel
+                       CM.TerminalTextIO
+                       CM.TextIO
+  build-depends:       ansi-terminal
+                      ,array
+                      ,base >=4.9 && <5.0
+                      ,bytestring
+                      ,containers
+                      ,exceptions
+                      ,data-default-class
+                      ,transformers
+  hs-source-dirs:      src
+  c-sources:           cbits/terminal.c
+  ghc-options:         -Wall -fno-warn-name-shadowing -O2
+  default-language:    Haskell2010
+
+executable cablemanagement
+  main-is:             Main.hs
+  build-depends:       base >=4.9 && <5.0, cablemanagement, random
+  hs-source-dirs:      exe
+  ghc-options:         -Wall -fno-warn-name-shadowing -O2
+  default-language:    Haskell2010
+
+test-suite cablemanagement-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  other-modules:       CM.TextIO.Tests
+  build-depends:       base >=4.9 && <5.0,
+                       cablemanagement,
+                       test-framework,
+                       test-framework-quickcheck2,
+                       QuickCheck
+  hs-source-dirs:      test
+  ghc-options:         -Wall -fno-warn-name-shadowing -fno-warn-orphans -O2
+  default-language:    Haskell2010
+
+benchmark cablemanagement-benchmarks
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  other-modules:       LevelBenchmarks
+  build-depends:       base >=4.9 && <5.0, cablemanagement, criterion
+  hs-source-dirs:      benchmark
+  ghc-options:         -Wall -fno-warn-name-shadowing -O2
+  default-language:    Haskell2010
