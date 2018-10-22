@@ -10,13 +10,23 @@ build-type:          Simple
 extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
 
+flag build-toys
+  default: False
+  description: Build toy executable
+
+
 library
   exposed-modules:     CM.Coords
-                       CM.LevelLike
                        CM.ArrayLevel
                        CM.ImapLevel
+                       CM.KeyInput
+                       CM.LevelLike
+                       CM.LevelRender
+                       CM.Portal
                        CM.TerminalTextIO
+                       CM.TileWorld
                        CM.TextIO
+                       CM.WorldLike
   build-depends:       ansi-terminal
                       ,array
                       ,base >=4.9 && <5.0
@@ -24,6 +34,7 @@ library
                       ,containers
                       ,exceptions
                       ,data-default-class
+                      ,text
                       ,transformers
   hs-source-dirs:      src
   c-sources:           cbits/terminal.c
@@ -32,6 +43,10 @@ library
 
 executable cablemanagement
   main-is:             Main.hs
+  if flag(build-toys)
+    buildable: True
+  else
+    buildable: False
   build-depends:       base >=4.9 && <5.0, cablemanagement, random
   hs-source-dirs:      exe
   ghc-options:         -Wall -fno-warn-name-shadowing -O2

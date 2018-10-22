@@ -1,6 +1,10 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE BangPatterns #-}
+
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module CM.TextIO
   ( TextIO(..)
@@ -18,11 +22,18 @@ import           Data.Word
 import           GHC.Generics
 
 import           CM.Coords
+import           CM.LevelRender
 
 class TextIO m where
   terminalSize :: m Coords2D
   setChar :: Attributes -> Char -> Coords2D -> m ()
   flush :: m ()
+
+instance TextIO m => TiledRenderer m (Attributes, Char) where
+  displaySize = terminalSize
+
+  {-# INLINE setTile #-}
+  setTile coords (atts, ch) = setChar atts ch coords
 
 -- | This describes the foreground and background color of some cell in
 -- terminal.

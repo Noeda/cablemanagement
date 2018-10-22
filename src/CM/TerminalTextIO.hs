@@ -37,6 +37,7 @@ import           System.Console.ANSI
 import           System.IO
 
 import           CM.Coords
+import           CM.KeyInput
 import           CM.TextIO
 
 foreign import ccall setup_terminal :: Ptr TermiosStruct -> IO ()
@@ -74,6 +75,15 @@ getTerminalSize :: MonadIO m => m Coords2D
 getTerminalSize = liftIO $ alloca $ \w_ptr -> alloca $ \h_ptr -> do
   get_terminal_size w_ptr h_ptr
   Coords2D <$> (fromIntegral <$> peek w_ptr) <*> (fromIntegral <$> peek h_ptr)
+
+instance MonadIO m => KeyInteractiveIO (TerminalTextIOT m) where
+  waitForKey = liftIO go
+   where
+    go = do
+      ch <- getChar
+      case charToKey ch of
+        Nothing -> go
+        Just key -> return key
 
 instance MonadIO m => TextIO (TerminalTextIOT m) where
   terminalSize = getTerminalSize
