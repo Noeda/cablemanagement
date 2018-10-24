@@ -1,7 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -16,10 +15,10 @@ module CM.TileWorld
   , WorldLevel(..)
   , ToWorldLevel(..)
   , AnyTileWorld(..)
+  , module CM.WorldLike
   )
 where
 
-import qualified Data.Array.Unboxed            as UA
 import           Data.Data
 import           Data.Default.Class
 import           Data.Foldable
@@ -28,6 +27,7 @@ import qualified Data.Map.Strict               as M
 import           Data.Maybe
 import           GHC.Generics
 
+import           CM.Coords
 import           CM.ImapLevel
 import           CM.ArrayLevel
 import           CM.Portal
@@ -36,12 +36,7 @@ import           CM.WorldLike
 data WorldLevel tile
   = IMapLevel !(IMapLevel tile)
   | ArrayLevel !(ArrayLevel tile)
-
-deriving instance (Eq tile, UA.IArray UA.UArray tile) => Eq (WorldLevel tile)
-deriving instance (Ord tile, UA.IArray UA.UArray tile) => Ord (WorldLevel tile)
-deriving instance (Show tile, UA.IArray UA.UArray tile) => Show (WorldLevel tile)
-deriving instance Typeable (WorldLevel tile)
-deriving instance Generic (WorldLevel tile)
+  deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic )
 
 class ToWorldLevel a tile where
   toWorldLevel :: a tile -> WorldLevel tile
@@ -55,21 +50,15 @@ instance ToWorldLevel ArrayLevel tile where
 data LevelNode tile = LevelNode
   { level   :: !(WorldLevel tile)
   , portals :: !(IM.IntMap (M.Map TileOrientation (TilePortal WorldSimpleCoords2D))) }
+  deriving ( Eq, Ord, Show, Typeable, Data, Generic )
 
 emptyNode :: Default tile => LevelNode tile
 emptyNode = LevelNode {level = IMapLevel empty, portals = IM.empty}
 
-deriving instance (Eq tile, UA.IArray UA.UArray tile) => Eq (LevelNode tile)
-deriving instance (Ord tile, UA.IArray UA.UArray tile) => Ord (LevelNode tile)
-deriving instance (Show tile, UA.IArray UA.UArray tile) => Show (LevelNode tile)
-
 data TileWorld tile = TileWorld
   { levels       :: !(IM.IntMap (LevelNode tile))
   , runningIndex :: !Int }
-
-deriving instance (Eq tile, UA.IArray UA.UArray tile) => Eq (TileWorld tile)
-deriving instance (Ord tile, UA.IArray UA.UArray tile) => Ord (TileWorld tile)
-deriving instance (Show tile, UA.IArray UA.UArray tile) => Show (TileWorld tile)
+  deriving ( Eq, Ord, Show, Typeable, Data, Generic )
 
 newtype TileWorldLevelKey = TileWorldLevelKey Int
   deriving ( Eq, Ord, Show, Typeable, Data, Generic )
@@ -81,9 +70,18 @@ data WorldCoords2D = WorldCoords2D {-# UNPACK #-} !Int {-# UNPACK #-} !SwizzCoor
 data WorldSimpleCoords2D = WorldSimpleCoords2D {-# UNPACK #-} !Int {-# UNPACK #-} !Coords2D
   deriving ( Eq, Ord, Show, Typeable, Data, Generic )
 
+instance ToCoords2D WorldCoords2D where
+  {-# INLINE toCoords2D #-}
+  toCoords2D (WorldCoords2D _ swizz) = toCoords2D swizz
+
+instance ToCoords2D WorldSimpleCoords2D where
+  {-# INLINE toCoords2D #-}
+  toCoords2D (WorldSimpleCoords2D _ coords) = coords
+
 instance Default tile => TilePortalWorldLike (TileWorld tile) where
   type WorldCoords (TileWorld tile) = WorldCoords2D
   type WorldPortalCoords (TileWorld tile) = WorldSimpleCoords2D
+  type LevelCoords (TileWorld tile) = Coords2D
   type LevelKey (TileWorld tile) = TileWorldLevelKey
   type Level (TileWorld tile) = WorldLevel tile
 
@@ -99,14 +97,15 @@ instance Default tile => TilePortalWorldLike (TileWorld tile) where
     source_coords = toCoords2D swizzled
 
   setLevel (TileWorldLevelKey index) level world =
-    world { levels = IM.insert index (LevelNode { level = level, portals = IM.empty }) (levels world) }
+    (world { levels = IM.insert index (LevelNode { level = level, portals = IM.empty }) (levels world) }
+    ,\coords -> WorldCoords2D index (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
 
   initial =
     let initial_running_index = 0
      in (TileWorld { runningIndex = initial_running_index, levels = IM.empty },
          TileWorldLevelKey initial_running_index)
 
-instance (Default tile, Eq tile, UA.IArray UA.UArray tile) => LevelLike (TileWorld tile) WorldCoords2D tile where
+instance (Default tile, Eq tile) => LevelLike (TileWorld tile) WorldCoords2D tile where
   tileAt world (WorldCoords2D levelkey swizzcoords) =
     case lvl of
       IMapLevel level -> tileAt level coords
@@ -123,7 +122,7 @@ instance (Default tile, Eq tile, UA.IArray UA.UArray tile) => LevelLike (TileWor
      in foldl' folder world level_pairlists
    where
     folder world (level_key, pairlist) =
-      setLevel (TileWorldLevelKey level_key) (IMapLevel $ fromPairList pairlist) world
+      fst $ setLevel (TileWorldLevelKey level_key) (IMapLevel $ fromPairList pairlist) world
 
 -- | Utility function to implement `fromPairList` correctly for `TileWorld`, it
 -- splits a pair list constructed on `WorldCoords2D` to `Coords2D`, for each

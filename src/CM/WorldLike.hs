@@ -10,6 +10,7 @@ import           CM.Portal
 class TilePortalWorldLike w where
   type WorldCoords w
   type WorldPortalCoords w
+  type LevelCoords w
   type LevelKey w
   type Level w
 
@@ -22,9 +23,12 @@ class TilePortalWorldLike w where
   -- | Replaces a level at some level key in the world.
   --
   -- This will add a new disconnected level if the level doesn't exist.
+  --
+  -- Returns the new world and a function to go from level coordinates to world
+  -- coordinates.
   setLevel :: LevelKey w
            -> Level w
            -> w
-           -> w
+           -> (w, LevelCoords w -> WorldCoords w)
 
   initial :: (w, LevelKey w)

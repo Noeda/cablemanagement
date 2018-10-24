@@ -11,12 +11,12 @@
 
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module CM.ArrayLevel
   ( ArrayLevel()
@@ -25,7 +25,7 @@ module CM.ArrayLevel
   )
 where
 
-import qualified Data.Array.Unboxed            as UA
+import qualified Data.Array                    as A
 import           Data.Data
 import           Data.Default.Class
 import           Data.Foldable
@@ -34,30 +34,25 @@ import           GHC.Generics
 import           CM.Coords
 import           CM.LevelLike
 
-newtype ArrayLevel tile = ArrayLevel (UA.UArray Coords2D tile)
+newtype ArrayLevel tile = ArrayLevel (A.Array Coords2D tile)
+  deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic )
 
-deriving instance (Eq tile, UA.IArray UA.UArray tile) => Eq (ArrayLevel tile)
-deriving instance (Ord tile, UA.IArray UA.UArray tile) => Ord (ArrayLevel tile)
-deriving instance (Show tile, UA.IArray UA.UArray tile) => Show (ArrayLevel tile)
-deriving instance Typeable (ArrayLevel tile)
-deriving instance Generic (ArrayLevel tile)
-
-instance (Eq tile, Default tile, UA.IArray UA.UArray tile) => LevelLike (ArrayLevel tile) Coords2D tile where
+instance (Eq tile, Default tile) => LevelLike (ArrayLevel tile) Coords2D tile where
   {-# INLINE tileAt #-}
   tileAt (ArrayLevel !arr) coords@(Coords2D !x !y) =
     if x < minx || y < miny || x > maxx || y > maxy
       then def
-      else arr UA.! coords
+      else arr A.! coords
    where
-    (Coords2D !minx !miny, Coords2D !maxx !maxy) = UA.bounds arr
+    (Coords2D !minx !miny, Coords2D !maxx !maxy) = A.bounds arr
 
   {-# INLINE empty #-}
-  empty = ArrayLevel $ UA.array (Coords2D 0 0, Coords2D (-1) (-1)) []
+  empty = ArrayLevel $ A.array (Coords2D 0 0, Coords2D (-1) (-1)) []
 
   fromPairList pairs' =
     if null pairs'
       then empty
-      else ArrayLevel $ UA.accumArray (flip const) def (min_bound, max_bound) pairs'
+      else ArrayLevel $ A.accumArray (flip const) def (min_bound, max_bound) pairs'
    where
     -- No need to set anything to pairs that have the default element;
     -- filter down our argument to only include pairs that are non-default

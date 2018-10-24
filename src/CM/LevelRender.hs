@@ -12,6 +12,7 @@
 
 module CM.LevelRender
   ( renderLevel
+  , EntityView(..)
   , TiledRenderer(..)
   , TileToRenderedTile(..)
   , Coords2DRenderView(..)
@@ -20,6 +21,8 @@ module CM.LevelRender
 where
 
 import           Control.Monad
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.State.Strict
 import           Data.Data
 import           Data.Foldable
 import           GHC.Generics
@@ -56,30 +59,49 @@ data Coords2DRenderView = Coords2DRenderView
 coords2DRenderView :: Coords2D -> Coords2D -> Coords2D -> Coords2DRenderView
 coords2DRenderView = Coords2DRenderView
 
+-- | Describes how to obtain entities for rendering.
+class EntityView view entitycoords entitydisplaytile where
+  viewEntity :: entitycoords -> view -> (Maybe entitydisplaytile, view)
+
+instance EntityView () entitycoords entitydisplaytile where
+  viewEntity _ _ = (Nothing, ())
+
+-- | The trivial entity viewer that does not render anything
+
 -- | Render a level with no field of view or other fancy stuff on a tiled
 -- display.
 --
 -- This is computationally most efficient renderer.
 {-# INLINE renderLevel #-}
 renderLevel
-  :: forall m displaytile l tile
+  :: forall m displaytile l tile view
    . ( Monad m
      , TiledRenderer m displaytile
      , LevelLike l Coords2D tile
      , TileToRenderedTile tile displaytile
+     , EntityView view Coords2D displaytile
      )
   => l
   -> Coords2DRenderView
+  -> view
   -> m ()
-renderLevel level renderview = do
+renderLevel level renderview entityview = do
   Coords2D !tw !th <- displaySize
-  for_ [ly .. (ly + h - 1)] $ \(!y) -> for_ [lx .. (lx + w - 1)] $ \(!x) -> do
-    let !dx = x - lx + dox
-        !dy = y - ly + doy
-    when (dx >= 0 && dx < tw && dy >= 0 && dy < th) $ do
-      let !tile        = tileAt level (Coords2D x y)
-          !displaytile = toRenderedTile tile
-      setTile (Coords2D dx dy) displaytile
+  flip evalStateT entityview
+    $ for_ [ly .. (ly + h - 1)]
+    $ \(!y) -> for_ [lx .. (lx + w - 1)] $ \(!x) -> do
+        let !dx = x - lx + dox
+            !dy = y - ly + doy
+        when (dx >= 0 && dx < tw && dy >= 0 && dy < th) $ do
+          let !src_coords  = Coords2D x y
+              !tile        = tileAt level src_coords
+              !displaytile = toRenderedTile tile
+          ent_state <- get
+          let (tile, !new_ent_state) = viewEntity src_coords ent_state
+          put new_ent_state
+          lift $ case tile of
+            Nothing   -> setTile (Coords2D dx dy) displaytile
+            Just tile -> setTile (Coords2D dx dy) tile
  where
   Coords2D !dox !doy = topLeftOnDisplay renderview
   Coords2D !lx  !ly  = topLeftOnLevel renderview

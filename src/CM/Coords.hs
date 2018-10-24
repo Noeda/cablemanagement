@@ -6,8 +6,8 @@ module CM.Coords
   ( Coords2D(..)
   , coords2DToInt
   , intToCoords2D
+  , ToCoords2D(..)
   , SwizzCoords2D(..)
-  , toCoords2D
   , zero
   , (.+)
   , (.-)
@@ -55,13 +55,20 @@ data SwizzCoords2D = SwizzCoords2D
   !PortalSwizzle   -- ^ Vertical (up-down) swizzling
   deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic )
 
--- | Extracts the `Coords2D` from swizzled coordinates.
---
--- This throws away the swizzling information but it's only relevant if you are
--- performing operations to move coordinates.
-toCoords2D :: SwizzCoords2D -> Coords2D
-toCoords2D (SwizzCoords2D coords _ _ _) = coords
-{-# INLINE toCoords2D #-}
+class ToCoords2D a where
+  -- | Extracts the `Coords2D` from swizzled coordinates.
+  --
+  -- This throws away the swizzling information but it's only relevant if you are
+  -- performing operations to move coordinates.
+  toCoords2D :: a -> Coords2D
+
+instance ToCoords2D SwizzCoords2D where
+  {-# INLINE toCoords2D #-}
+  toCoords2D (SwizzCoords2D coords _ _ _) = coords
+
+instance ToCoords2D Coords2D where
+  {-# INLINE toCoords2D #-}
+  toCoords2D = id
 
 {-# INLINE zero #-}
 zero :: Coords2D
