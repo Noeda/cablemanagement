@@ -10,12 +10,18 @@
 {-# LANGUAGE RankNTypes #-}
 
 module CM.TileWorld
-  ( TileWorld()
+  (
+  -- * World
+    TileWorld()
   , WorldCoords2D(..)
+  , WorldSimpleCoords2D(..)
+  , toSimpleCoords
+  -- * Levels in a world.
   , WorldLevel(..)
   , ToWorldLevel(..)
+  -- * Type hackery
   , AnyTileWorld(..)
-  , toSimpleCoords
+  -- * Re-exports
   , module CM.WorldLike
   )
 where
@@ -35,11 +41,15 @@ import           CM.ArrayLevel
 import           CM.Portal
 import           CM.WorldLike
 
+-- | Type of a world level.
 data WorldLevel tile
   = IMapLevel !(IMapLevel tile)
   | ArrayLevel !(ArrayLevel tile)
   deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic )
 
+-- | Class of things that can be turned into `WorldLevel`.
+--
+-- This is implemented for level types like `IMapLevel` or `ArrayLevel`.
 class ToWorldLevel a tile where
   toWorldLevel :: a tile -> WorldLevel tile
 
@@ -49,6 +59,7 @@ instance ToWorldLevel IMapLevel tile where
 instance ToWorldLevel ArrayLevel tile where
   toWorldLevel = ArrayLevel
 
+-- | This type stores information about a level and its portals.
 data LevelNode tile = LevelNode
   { level   :: !(WorldLevel tile)
   , portals :: !(IM.IntMap (M.Map TileOrientation (TilePortal WorldSimpleCoords2D))) }
@@ -57,18 +68,38 @@ data LevelNode tile = LevelNode
 emptyNode :: Default tile => LevelNode tile
 emptyNode = LevelNode {level = IMapLevel empty, portals = IM.empty}
 
+-- | This is the type of tile world, where you can add and remove levels
+-- dynamically and link them with portals.
 data TileWorld tile = TileWorld
   { levels       :: !(IM.IntMap (LevelNode tile))
   , runningIndex :: !Int }
   deriving ( Eq, Ord, Show, Typeable, Data, Generic )
 
+-- | This is the type of a key than can be referred to a level inside
+-- `TileWorld`.
 newtype TileWorldLevelKey = TileWorldLevelKey Int
   deriving ( Eq, Ord, Show, Typeable, Data, Generic )
 
+-- | World coordinates.
+--
+-- World coordinates store the level, position on that level and swizzling
+-- information. Swizzle applies tranformation to coordinate system, e.g. x is
+-- mirrored.
+--
+-- This is the type of player coordinates but not much else. Most things should
+-- use `WorldSimpleCoords2D` unless the orientation of whatever thing having
+-- coordinates matters (most things just care about position, not how they are
+-- rotated).
+--
+-- Note that world coordinates do not evaluate equal even if they point to same
+-- location in the world if their orientation/swizzling is different. You can
+-- use `toSimpleCoords` before you do comparisons.
 data WorldCoords2D = WorldCoords2D {-# UNPACK #-} !Int {-# UNPACK #-} !SwizzCoords2D
   deriving ( Eq, Ord, Show, Typeable, Data, Generic )
 
--- | Sasme as `WorldCoords2D` but there is no swizzling or rotation information.
+-- | Same as `WorldCoords2D` but there is no swizzling or rotation information.
+--
+-- This stores just level key and coordinates on that level.
 data WorldSimpleCoords2D = WorldSimpleCoords2D {-# UNPACK #-} !Int {-# UNPACK #-} !Coords2D
   deriving ( Eq, Ord, Show, Typeable, Data, Generic )
 
@@ -81,6 +112,9 @@ instance ToCoords2D WorldSimpleCoords2D where
   toCoords2D (WorldSimpleCoords2D _ coords) = coords
 
 {-# INLINE toSimpleCoords #-}
+-- | This transforms world coordinates to simple world coordinates.
+--
+-- This is not reversible; swizzling information is lost.
 toSimpleCoords :: WorldCoords2D -> WorldSimpleCoords2D
 toSimpleCoords (WorldCoords2D level_key swizzled) =
   WorldSimpleCoords2D level_key (toCoords2D swizzled)
@@ -148,6 +182,8 @@ splitWorldCoordedToCoords = foldl' folder IM.empty
 -- coordinate moving.
 data AnyTileWorld = forall a. AnyTileWorld (TileWorld a)
 
+-- | The context uses `AnyTileWorld`. You can use `liftLevel` to turn a
+-- polymorphic `TileWorld` type to `AnyTileWorld`.
 instance TiledCoordMoving WorldCoords2D where
   type Context WorldCoords2D = AnyTileWorld
 
@@ -165,7 +201,8 @@ instance TiledCoordMoving WorldCoords2D where
 
 -- | A function that jumps through a portal.
 --
--- This function is common code shared by all functions in `TiledCoordMoving`.
+-- This function is common code shared by all functions in `TiledCoordMoving`
+-- and should not be called directly by the user.
 {-# INLINABLE moveWorldCoords #-}
 moveWorldCoords
   :: (SwizzCoords2D -> SwizzCoords2D)
@@ -194,12 +231,16 @@ moveWorldCoords coordinate_move allowed_orientations (AnyTileWorld w) (WorldCoor
   target_coords = coordinate_move swizzcoords
   src_portals   = maybe IM.empty portals $ IM.lookup level_key (levels w)
 
+instance LiftLevel (TileWorld tile) (TileWorld tile) where
+  {-# INLINE liftLevel #-}
+  liftLevel = id
+
 instance LiftLevel (TileWorld tile) AnyTileWorld where
   {-# INLINE liftLevel #-}
   liftLevel = liftLevel'
 
 liftLevel' :: TileWorld a -> AnyTileWorld
-liftLevel' world = AnyTileWorld world
+liftLevel' = AnyTileWorld
 
 -- | Utility function that returns the first matching key from a map.
 {-# INLINE lookupFirst #-}

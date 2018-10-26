@@ -7,6 +7,7 @@ where
 
 import           CM.Portal
 
+-- | Typeclass of worlds that have portals in them.
 class TilePortalWorldLike w where
   type WorldCoords w
   type WorldPortalCoords w
@@ -31,4 +32,5 @@ class TilePortalWorldLike w where
            -> w
            -> (w, LevelCoords w -> WorldCoords w)
 
+  -- | Returns a world with one empty level, and a key to that level.
   initial :: (w, LevelKey w)
