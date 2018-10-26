@@ -98,6 +98,14 @@ instance MonadIO m => TextIO (TerminalTextIOT m) where
         (fromIntegral x, fromIntegral y)
         (coerce attributes .|. (fromIntegral (ord ch .&. 0xfffffff) `shiftL` 36))
 
+  clear = TerminalTextIOT $ do
+    st <- get
+    let Coords2D !tw !th = seenTerminalSize st
+    liftIO $ for_ [(x, y) | x <- [0..tw-1], y <- [0..th-1]] $ \(x, y) ->
+      M.writeArray (flushContents st) (fromIntegral x, fromIntegral y)
+        (coerce (colorsToAttributes (Color3 0 0 0) (Color3 0 0 0)) .|.
+         (fromIntegral (ord ' ' .&. 0xfffffff) `shiftL` 36))
+
   flush = TerminalTextIOT $ do
     st <- get
     display_size <- liftIO $ IA.getBounds (displayContents st)

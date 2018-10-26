@@ -1,11 +1,14 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module CM.Coords
   ( Coords2D(..)
   , coords2DToInt
   , intToCoords2D
+  , TileRotation(..)
+  , PortalSwizzle(..)
   , ToCoords2D(..)
   , SwizzCoords2D(..)
   , zero
@@ -14,6 +17,7 @@ module CM.Coords
   , minC
   , maxC
   , TiledCoordMoving(..)
+  , movingByLocations
   )
 where
 
@@ -110,15 +114,51 @@ class TiledCoordMoving coords where
   toLeftUp :: Context coords -> coords -> coords
   toLeftDown :: Context coords -> coords -> coords
 
+-- | Given two `Coords2D` returns one of the functions for `TiledCoordMoving`
+{-# INLINE movingByLocations #-}
+movingByLocations
+  :: TiledCoordMoving coords
+  => Coords2D
+  -> Coords2D
+  -> Maybe (Context coords -> coords -> coords)
+movingByLocations (Coords2D x1 y1) (Coords2D x2 y2) = if
+  | x2 == x1
+  -> (if
+       | y2 == y1 + 1 -> Just toDown
+       | y2 == y1 - 1 -> Just toUp
+       | otherwise    -> Nothing
+     )
+  | y2 == y1
+  -> (if
+       | x2 == x1 + 1 -> Just toRight
+       | x2 == x1 - 1 -> Just toLeft
+       | otherwise    -> Nothing
+     )
+  | x2 == x1 + 1
+  -> (if
+       | y2 == y1 + 1 -> Just toRightDown
+       | y2 == y1 - 1 -> Just toRightUp
+       | otherwise    -> Nothing
+     )
+  | x2 == x1 - 1
+  -> (if
+       | y2 == y1 + 1 -> Just toLeftDown
+       | y2 == y1 - 1 -> Just toLeftUp
+       | otherwise    -> Nothing
+     )
+  | otherwise
+  -> Nothing
+
+
 instance TiledCoordMoving Coords2D where
   type Context Coords2D = ()
 
   {-# INLINE toRight #-}
   toRight _ c = c .+ Coords2D 1 0
   {-# INLINE toLeft #-}
-  toLeft _ c = c .- Coords2D 1 0
+  toLeft _ c = c .- Coords2D (-1) 0
   {-# INLINE toUp #-}
-  toUp _ c = c .- Coords2D 0 1
+  toUp _ c = c .- Coords2D 0 (-1)
   {-# INLINE toDown #-}
   toDown _ c = c .+ Coords2D 0 1
   {-# INLINE toRightUp #-}

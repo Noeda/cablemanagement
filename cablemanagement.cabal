@@ -22,6 +22,7 @@ library
                        CM.KeyInput
                        CM.LevelLike
                        CM.LevelRender
+                       CM.LiftLevel
                        CM.Portal
                        CM.TerminalTextIO
                        CM.TileWorld
@@ -34,8 +35,10 @@ library
                       ,containers
                       ,exceptions
                       ,data-default-class
+                      ,primitive
                       ,text
                       ,transformers
+                      ,vector
   hs-source-dirs:      src
   c-sources:           cbits/terminal.c
   ghc-options:         -Wall -fno-warn-name-shadowing -O2

@@ -27,6 +27,7 @@ import           CM.LevelRender
 class TextIO m where
   terminalSize :: m Coords2D
   setChar :: Attributes -> Char -> Coords2D -> m ()
+  clear :: m ()
   flush :: m ()
 
 instance TextIO m => TiledRenderer m (Attributes, Char) where

@@ -11,10 +11,11 @@
 
 module CM.TileWorld
   ( TileWorld()
-  , WorldCoords2D()
+  , WorldCoords2D(..)
   , WorldLevel(..)
   , ToWorldLevel(..)
   , AnyTileWorld(..)
+  , toSimpleCoords
   , module CM.WorldLike
   )
 where
@@ -29,6 +30,7 @@ import           GHC.Generics
 
 import           CM.Coords
 import           CM.ImapLevel
+import           CM.LiftLevel
 import           CM.ArrayLevel
 import           CM.Portal
 import           CM.WorldLike
@@ -77,6 +79,11 @@ instance ToCoords2D WorldCoords2D where
 instance ToCoords2D WorldSimpleCoords2D where
   {-# INLINE toCoords2D #-}
   toCoords2D (WorldSimpleCoords2D _ coords) = coords
+
+{-# INLINE toSimpleCoords #-}
+toSimpleCoords :: WorldCoords2D -> WorldSimpleCoords2D
+toSimpleCoords (WorldCoords2D level_key swizzled) =
+  WorldSimpleCoords2D level_key (toCoords2D swizzled)
 
 instance Default tile => TilePortalWorldLike (TileWorld tile) where
   type WorldCoords (TileWorld tile) = WorldCoords2D
@@ -139,7 +146,7 @@ splitWorldCoordedToCoords = foldl' folder IM.empty
 -- If they were allowed, then in `TiledCoordMoving` instance for
 -- `WorldCoords2D` we would have `TileWorld` be directly the `Context` for
 -- coordinate moving.
-newtype AnyTileWorld = AnyTileWorld (forall a. TileWorld a)
+data AnyTileWorld = forall a. AnyTileWorld (TileWorld a)
 
 instance TiledCoordMoving WorldCoords2D where
   type Context WorldCoords2D = AnyTileWorld
@@ -151,9 +158,9 @@ instance TiledCoordMoving WorldCoords2D where
   toDown = moveWorldCoords (toDown ()) [OnTop]
 
   toRightUp = moveWorldCoords (toRightUp ()) [OnLeft, OnBottom]
-  toRightDown = moveWorldCoords (toRightUp ()) [OnLeft, OnTop]
+  toRightDown = moveWorldCoords (toRightDown ()) [OnLeft, OnTop]
   toLeftUp = moveWorldCoords (toLeftUp ()) [OnRight, OnBottom]
-  toLeftDown = moveWorldCoords (toLeftUp ()) [OnRight, OnTop]
+  toLeftDown = moveWorldCoords (toLeftDown ()) [OnRight, OnTop]
 
 
 -- | A function that jumps through a portal.
@@ -186,6 +193,13 @@ moveWorldCoords coordinate_move allowed_orientations (AnyTileWorld w) (WorldCoor
  where
   target_coords = coordinate_move swizzcoords
   src_portals   = maybe IM.empty portals $ IM.lookup level_key (levels w)
+
+instance LiftLevel (TileWorld tile) AnyTileWorld where
+  {-# INLINE liftLevel #-}
+  liftLevel = liftLevel'
+
+liftLevel' :: TileWorld a -> AnyTileWorld
+liftLevel' world = AnyTileWorld world
 
 -- | Utility function that returns the first matching key from a map.
 {-# INLINE lookupFirst #-}
