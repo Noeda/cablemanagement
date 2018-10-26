@@ -196,14 +196,14 @@ renderBeamcastFOV
   -> Int
   -> m ()
 renderBeamcastFOV !level !view !entityview !num_beams = do
-  -- Render the center tile
-  drawTile center_x center_x (levelStartCoords view) Visible
-
   -- Render all the quadrants (the arguments are x-mirroring and y-mirroring)
   renderQuadrant False False
   renderQuadrant True  False
   renderQuadrant False True
   renderQuadrant True  True
+
+  -- Render the center tile
+  drawTile center_x center_y (levelStartCoords view) Visible
  where
   -- Figure out widths and heights and where the center of the specified view
   -- is on the display.

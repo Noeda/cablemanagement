@@ -19,7 +19,7 @@ newtype RenderCounter a = RenderCounter (State Int a)
 
 instance TiledRenderer RenderCounter () where
   displaySize = return $ Coords2D 100 100
-  setTile !_ !_ = RenderCounter $ modify $ (+1)
+  setTile !_ !_ = RenderCounter $ modify (+1)
 
 data Tile = Floor | Wall
 
