@@ -82,6 +82,7 @@ coords2DRenderView = Coords2DRenderView
 class EntityView view entitycoords entitydisplaytile where
   viewEntity :: entitycoords -> view -> Maybe entitydisplaytile
 
+-- Trivial `EntityView` that doesn't render any entities.
 instance EntityView () entitycoords entitydisplaytile where
   viewEntity _ _ = Nothing
 
@@ -176,6 +177,7 @@ renderLevel level renderview entityview = do
 -- `LiftLevel` is already implemented for you. However, if the types are
 -- different, you need to implement `LiftLevel` to turn the rendered level into
 -- a context usable with `TiledCoordMoving`.
+{-# INLINE renderBeamcastFOV #-}
 renderBeamcastFOV
   :: forall m l liftedl tile view displaytile coords
    . ( Monad m
@@ -193,7 +195,7 @@ renderBeamcastFOV
   -> view
   -> Int
   -> m ()
-renderBeamcastFOV level view entityview num_beams = do
+renderBeamcastFOV !level !view !entityview !num_beams = do
   -- Render the center tile
   drawTile center_x center_x (levelStartCoords view) Visible
 
@@ -217,8 +219,10 @@ renderBeamcastFOV level view entityview num_beams = do
   renderQuadrant xmirror' ymirror' = forSlopes_ $ \slope_idx ->
     go slope_idx slope_idx 1 0 (num_beams - 1) (levelStartCoords view) 0 0
    where
+    {-# INLINE xmirror #-}
     xmirror :: Num a => a -> a
     xmirror v = if xmirror' then negate v else v
+    {-# INLINE ymirror #-}
     ymirror :: Num a => a -> a
     ymirror v = if ymirror' then negate v else v
 
