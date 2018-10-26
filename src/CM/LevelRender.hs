@@ -318,6 +318,9 @@ renderBeamcastFOV level view entityview num_beams = do
   -- the tile as currently visible (as opposed not visible which is usually
   -- rendered as a gray tile). Currently this algorithm only renders visible
   -- tiles so visibility is always 'Visible'.
+  drawTile !dx !dy !_ !_
+    | dx < disp_left || dy < disp_top || dx > disp_right || dy > disp_bottom
+    = return () -- Don't draw anything out of bounds.
   drawTile !dx !dy !coords !visibility = case viewEntity coords entityview of
     Nothing ->
       setTile (Coords2D dx dy) (toRenderedTile (tileAt level coords) visibility)
