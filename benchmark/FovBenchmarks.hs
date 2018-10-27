@@ -41,7 +41,24 @@ emptyImapLevel = empty
 
 fovBenchmarks :: [Benchmark]
 fovBenchmarks =
-  [ bench "compute field of view at 100x100 radius empty imap level, 64 slopes"
+  [ bench "compute field of view at 100x100 radius empty imap level raycasting"
+    $ whnf
+        (runRenderCounter $ renderRaycastingView
+          emptyImapLevel
+          (relativeRenderView (Coords2D 50 50) (Coords2D 0 0) (Coords2D 100 100)
+          )
+          ()
+        )
+        11
+  , bench "compute field of view at 80x24 radius empty imap level raycasting"
+    $ whnf
+        (runRenderCounter $ renderRaycastingView
+          emptyImapLevel
+          (relativeRenderView (Coords2D 40 12) (Coords2D 0 0) (Coords2D 80 24))
+          ()
+        )
+        11
+  , bench "compute field of view at 100x100 radius empty imap level, 32 slopes"
     $ whnf
         (runRenderCounter $ renderBeamcastFOV
           emptyImapLevel
@@ -51,7 +68,7 @@ fovBenchmarks =
           32
         )
         11
-  , bench "compute field of view at 80x24 radius empty imap level, 64 slopes"
+  , bench "compute field of view at 80x24 radius empty imap level, 32 slopes"
     $ whnf
         (runRenderCounter $ renderBeamcastFOV
           emptyImapLevel

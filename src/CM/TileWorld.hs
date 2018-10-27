@@ -47,6 +47,12 @@ data WorldLevel tile
   | ArrayLevel !(ArrayLevel tile)
   deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic )
 
+instance (Default tile, Eq tile) => LevelLike (WorldLevel tile) Coords2D tile where
+  tileAt (IMapLevel lvl) coords = tileAt lvl coords
+  tileAt (ArrayLevel lvl) coords = tileAt lvl coords
+  fromPairList = IMapLevel . fromPairList
+  empty = IMapLevel empty
+
 -- | Class of things that can be turned into `WorldLevel`.
 --
 -- This is implemented for level types like `IMapLevel` or `ArrayLevel`.
@@ -126,6 +132,8 @@ instance Default tile => TilePortalWorldLike (TileWorld tile) where
   type LevelKey (TileWorld tile) = TileWorldLevelKey
   type Level (TileWorld tile) = WorldLevel tile
 
+  toPortalCoords _ (WorldCoords2D index swizz) = WorldSimpleCoords2D index (toCoords2D swizz)
+
   addPortal (WorldCoords2D level_key swizzled) tileportal world =
     world { levels = IM.alter
                (Just . (\node -> node { portals = IM.alter
@@ -145,6 +153,12 @@ instance Default tile => TilePortalWorldLike (TileWorld tile) where
     let initial_running_index = 0
      in (TileWorld { runningIndex = initial_running_index, levels = IM.empty },
          TileWorldLevelKey initial_running_index)
+
+  addLevel lvl world =
+    let index = runningIndex world
+     in (world { levels = IM.insert index (LevelNode { level = lvl, portals = IM.empty }) (levels world)
+           , runningIndex = index + 1 }
+        ,\coords -> WorldCoords2D index (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
 
 instance (Default tile, Eq tile) => LevelLike (TileWorld tile) WorldCoords2D tile where
   tileAt world (WorldCoords2D levelkey swizzcoords) =
@@ -210,7 +224,7 @@ moveWorldCoords
   -> AnyTileWorld
   -> WorldCoords2D
   -> WorldCoords2D
-moveWorldCoords coordinate_move allowed_orientations (AnyTileWorld w) (WorldCoords2D level_key swizzcoords@(SwizzCoords2D _ rot hswizz vswizz))
+moveWorldCoords coordinate_move allowed_orientations' (AnyTileWorld w) (WorldCoords2D level_key swizzcoords@(SwizzCoords2D _ rot hswizz vswizz))
   = -- Would the resulting coordinates end up inside the portal?
     case IM.lookup (coords2DToInt $ toCoords2D target_coords) src_portals of
       -- If not, then this is just normal movement.
@@ -228,6 +242,8 @@ moveWorldCoords coordinate_move allowed_orientations (AnyTileWorld w) (WorldCoor
                          (vswizzling <> vswizz)
           )
  where
+  allowed_orientations = flip fmap allowed_orientations'
+    $ \ori -> applyRotation rot $ applyHSwizz hswizz $ applyVSwizz vswizz ori
   target_coords = coordinate_move swizzcoords
   src_portals   = maybe IM.empty portals $ IM.lookup level_key (levels w)
 

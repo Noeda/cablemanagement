@@ -11,6 +11,7 @@ module CM.Coords
   , PortalSwizzle(..)
   , ToCoords2D(..)
   , SwizzCoords2D(..)
+  , Rotatable(..)
   , zero
   , (.+)
   , (.-)
@@ -198,12 +199,12 @@ applyTransformation (SwizzCoords2D c rot hmirroring vmirroring) coords =
   let c' = c .+ applyRotation rot (applyMirror hmirroring vmirroring coords)
   in  SwizzCoords2D c' rot hmirroring vmirroring
 
-{-# INLINE applyRotation #-}
-applyRotation :: TileRotation -> Coords2D -> Coords2D
-applyRotation Rot0   coords         = coords
-applyRotation Rot90  (Coords2D x y) = Coords2D (-y) x
-applyRotation Rot180 (Coords2D x y) = Coords2D (-x) (-y)
-applyRotation Rot270 (Coords2D x y) = Coords2D y (-x)
+instance Rotatable Coords2D where
+  {-# INLINE applyRotation #-}
+  applyRotation Rot0   coords         = coords
+  applyRotation Rot90  (Coords2D x y) = Coords2D (-y) x
+  applyRotation Rot180 (Coords2D x y) = Coords2D (-x) (-y)
+  applyRotation Rot270 (Coords2D x y) = Coords2D y (-x)
 
 {-# INLINE applyMirror #-}
 applyMirror :: PortalSwizzle -> PortalSwizzle -> Coords2D -> Coords2D

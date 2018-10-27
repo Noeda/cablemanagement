@@ -19,6 +19,7 @@ module CM.LevelRender
   ( -- * Rendering functions
     renderLevel
   , renderBeamcastFOV
+  , renderRaycastingView
     -- * Type classes
     --
     -- You may need to implement bunch of these for your types to make them
@@ -32,13 +33,20 @@ module CM.LevelRender
   , coords2DRenderView
   , RelativeRenderView(..)
   , relativeRenderView
+  -- * Line casting tools
+  , bresenham
+  , distanceToLine
   )
 where
 
-import           Control.Applicative
 import           Control.Monad
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Except
+import           Control.Monad.Trans.State.Strict
 import           Data.Data
 import           Data.Foldable
+import           Data.Int
+import qualified Data.IntMap.Strict            as IM
 import           Data.Maybe
 import           GHC.Generics
 
@@ -108,8 +116,6 @@ relativeRenderView = RelativeRenderView
 class Obstacle tile where
   isObstacle :: tile -> Bool
 
--- | The trivial entity viewer that does not render anything
-
 -- | Render a level with no field of view or other fancy stuff on a tiled
 -- display.
 --
@@ -144,6 +150,135 @@ renderLevel level renderview entityview = do
   Coords2D !lx  !ly  = topLeftOnLevel renderview
   Coords2D !w   !h   = widthHeight renderview
 
+data RayCastState coord = RayCastState !coord {-# UNPACK #-} !Int16 {-# UNPACK #-} !Int16
+
+-- | Renders a level using a raycasting algorithm with sphere obstacles.
+{-# INLINE renderRaycastingView #-}
+renderRaycastingView
+  :: forall m l liftedl tile view displaytile coords
+   . ( Monad m
+     , TiledRenderer m displaytile
+     , Obstacle tile
+     , LevelLike l coords tile
+     , TileToRenderedTile tile displaytile
+     , EntityView view coords displaytile
+     , TiledCoordMoving coords
+     , Context coords ~ liftedl
+     , LiftLevel l liftedl
+     )
+  => l
+  -> RelativeRenderView coords
+  -> view
+  -> m ()
+renderRaycastingView !world !view !entityview = do
+  let !tile = tileAt world (levelStartCoords view)
+  drawTile center_x center_y (levelStartCoords view) tile
+  -- Cast ray to all top and bottom parts
+  for_ [disp_left .. disp_right] $ \target_x -> do
+    shootRay (Coords2D target_x 0)
+    shootRay (Coords2D target_x disp_bottom)
+  -- Cast ray to all left and right parts
+  for_ [disp_top + 1 .. disp_bottom - 1] $ \target_y -> do
+    shootRay (Coords2D 0 target_y)
+    shootRay (Coords2D disp_right target_y)
+ where
+  -- Figure out widths and heights and where the center of the specified view
+  -- is on the display.
+  Coords2D !disp_left !disp_top = relativeTopLeft view
+  Coords2D !disp_right !disp_bottom =
+    relativeTopLeft view .+ relativeViewWidthHeight view .- Coords2D (-1) (-1)
+  Coords2D !center_x !center_y = Coords2D ((disp_left + disp_right) `div` 2)
+                                          ((disp_top + disp_bottom) `div` 2)
+
+  center_x05 :: Double
+  center_x05 = fromIntegral center_x + 0.5
+  center_y05 :: Double
+  center_y05 = fromIntegral center_y + 0.5
+
+  {-# INLINABLE shootRay #-}
+  shootRay (Coords2D !target_x !target_y) =
+    void
+      $ runExceptT
+      $ flip evalStateT (RayCastState (levelStartCoords view) center_x center_y)
+      $ bresenham center_x center_y target_x target_y
+      $ \(!dx') !dy' -> unless (dx' == center_x && dy' == center_y) $ do
+          RayCastState !prev_coord !prev_x !prev_y <- get
+          let !mover = fromMaybe (error "impossible") $ movingByLocations
+                (Coords2D prev_x prev_y)
+                (Coords2D dx' dy')
+              !coords = mover (liftLevel world) prev_coord
+          put $ RayCastState coords dx' dy'
+          let !tile = tileAt world coords
+              !dist = distanceToLine (fromIntegral dx' + 0.5 :: Double)
+                                     (fromIntegral dy' + 0.5)
+                                     center_x05
+                                     center_y05
+                                     target_x05
+                                     target_y05
+          -- 0.27 came from trial and error, this value should be between 0.0
+          -- and 0.5 or the fov algorithm becomes unsound.
+          lift $ lift $ when (dist <= 0.270001) $ drawTile dx' dy' coords tile
+          when (isObstacle tile)
+            $
+            -- Does the ray intersect a tile sphere?
+              when (dist <= 0.50001)
+            $ lift
+            $ throwE ()
+   where
+    target_x05 :: Double
+    target_x05 = fromIntegral target_x + 0.5
+    target_y05 :: Double
+    target_y05 = fromIntegral target_y + 0.5
+
+  {-# INLINE drawTile #-}
+  drawTile !dispx !dispy !coords !tile = case viewEntity coords entityview of
+    Nothing   -> setTile (Coords2D dispx dispy) (toRenderedTile tile Visible)
+    Just tile -> setTile (Coords2D dispx dispy) tile
+
+
+{-# INLINE distanceToLine #-}
+distanceToLine :: Floating a => a -> a -> a -> a -> a -> a -> a
+distanceToLine !x0 !y0 !x1 !y1 !x2 !y2 =
+  abs ((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1)
+    / sqrt ((y2 - y1) ** 2 + (x2 - x1) ** 2)
+
+{-# INLINE bresenham #-}
+bresenham
+  :: (Applicative f, Num a, Ord a)
+  => a
+  -> a
+  -> a
+  -> a
+  -> (a -> a -> f ())
+  -> f ()
+bresenham !x1 !y1 !x2 !y2 action
+  | abs (y2 - y1) < abs (x2 - x1) = if x1 > x2
+    then lowslope (negate x1) y1 (negate x2) y2 (\x y -> action (negate x) y)
+    else lowslope x1 y1 x2 y2 action
+  | otherwise = if y1 > y2
+    then lowslope (negate y1) x1 (negate y2) x2 (\y x -> action x (negate y))
+    else lowslope y1 x1 y2 x2 (flip action)
+
+{-# INLINE lowslope #-}
+lowslope
+  :: (Applicative f, Num a, Ord a)
+  => a
+  -> a
+  -> a
+  -> a
+  -> (a -> a -> f ())
+  -> f ()
+lowslope !x1 !y1 !x2 !y2 action = go x1 y1 (2 * deltay - deltax)
+ where
+  !deltax  = x2 - x1
+  !deltay  = if deltay' < 0 then negate deltay' else deltay'
+  !deltay' = y2 - y1
+  !yi      = if deltay' < 0 then -1 else 1
+
+  go !x !y !d | x <= x2 =
+    let (!y', !d') = if d > 0 then (y + yi, d - 2 * deltax) else (y, d)
+    in  action x y *> go (x + 1) y' (d' + 2 * deltay)
+  go _ _ _ = pure ()
 -- | Renders a level using Isaac's beamcasting algorithm
 -- http://www.roguebasin.com/index.php?title=Isaac_s_fast_beamcasting_LOS
 --
@@ -216,8 +351,11 @@ renderBeamcastFOV !level !view !entityview !num_beams = do
 
   -- This function renders a quadrant. Use xmirror' and ymirror' arguments to
   -- control which quadrant.
-  renderQuadrant xmirror' ymirror' = forSlopes_ $ \slope_idx ->
-    go slope_idx slope_idx 1 0 (num_beams - 1) (levelStartCoords view) 0 0
+  renderQuadrant xmirror' ymirror' =
+    flip evalStateT
+         (IM.singleton (coords2DToInt (Coords2D 0 0)) (levelStartCoords view))
+      $ forSlopes_
+      $ \slope_idx -> go slope_idx slope_idx 1 0 (num_beams - 1) 0 0
    where
     {-# INLINE xmirror #-}
     xmirror :: Num a => a -> a
@@ -226,21 +364,39 @@ renderBeamcastFOV !level !view !entityview !num_beams = do
     ymirror :: Num a => a -> a
     ymirror v = if ymirror' then negate v else v
 
+    lookupCoords :: Coords2D -> StateT (IM.IntMap coords) m coords
+    lookupCoords coords@(Coords2D x y) = do
+      imap <- get
+      case IM.lookup (coords2DToInt coords) imap of
+        Nothing -> do
+          -- Determine which direction we should traverse to find coordinates.
+          let !x' = signum x
+              !y' = signum y
+          coords_rec <- lookupCoords (Coords2D (x - x') (y - y'))
+          case movingByLocations' (Coords2D (x - x') (y - y')) coords of
+            Nothing    -> error "impossible"
+            Just mover -> do
+              let !levelcoords = mover (liftLevel level) coords_rec
+              modify $ IM.insert (coords2DToInt coords) levelcoords
+              return levelcoords
+        Just coords -> return coords
+
+
     -- This is a wrapper around `movingByLocations` (see CM.Coords module) to
     -- take mirroring into account.
-    movingByLocations' c1@(Coords2D x1 y1) (Coords2D x2 y2) =
-      let dx = xmirror $ x2 - x1
-          dy = ymirror $ y2 - y1
+    movingByLocations' c1@(Coords2D !x1 !y1) (Coords2D !x2 !y2) =
+      let !dx = xmirror $ x2 - x1
+          !dy = ymirror $ y2 - y1
       in  movingByLocations c1 (Coords2D (x1 + dx) (y1 + dy))
 
     -- This is our big and ugly loop function where the real meat of the work
     -- is done. (It may be best to follow the roguebasin link given in the
     -- documentation of this function to understasnd what's happening).
-    go !_ !_ !_ !mini !maxi !_ !_ !_ | mini > maxi = return ()
-    go !_ !_ !_ !_ !_ !_ !prev_x !prev_y
+    go !_ !_ !_ !mini !maxi !_ !_ | mini > maxi = return ()
+    go !_ !_ !_ !_ !_ !prev_x !prev_y
       | prev_x > (disp_w `div` 2) + 1 || prev_y > (disp_h `div` 2) + 1
       = return ()
-    go !slope_idx !v !u !mini !maxi !prev1_coords !prev1_x !prev1_y = do
+    go !slope_idx !v !u !mini !maxi !_ !_ = do
       let !y'' = v `div` num_beams
           !x'' = u - y
           !y   = y''
@@ -249,67 +405,32 @@ renderBeamcastFOV !level !view !entityview !num_beams = do
           !x'  = fromIntegral x
           !cor = num_beams - (v `mod` num_beams)
 
-        -- These locations are derived from taking the previous position and
-        -- trying to move in coordinate space according to the world.
-        --
-        -- In vanilla Isaac's beam algorithm you can just address the level by
-        -- direct array access (e.g. level[x][y] in C code).
-        --
-        -- We don't have that luxury here because we have chosen that we want to
-        -- support weird topologies such as portals. This is the code that
-        -- handles getting coordinates based on previous position of our beam
-        -- rather than random acccess.
-          loc1_by_base :: Maybe (coords, Context coords -> coords -> coords)
-          !loc1_by_base = (,) prev1_coords
-            <$> movingByLocations' (Coords2D prev1_x prev1_y) (Coords2D x' y')
+      loc1 <- lookupCoords (Coords2D x' y')
+      loc2 <- lookupCoords (Coords2D (x' - 1) (y' + 1))
 
-          !loc2_by_base = (,) prev1_coords <$> movingByLocations'
-            (Coords2D prev1_x prev1_y)
-            (Coords2D (x' - 1) (y' + 1))
-
-      -- These complicated lets for `loc1` and `loc2` and `tile_at_loc1` and
-      -- `tile_at_loc2` are generated by taking the previous position and
-      -- attempting to use them (i.e. `loc1_by_base` and `loc2_by_base`) but if
-      -- that fails, then we use Alternative instance (<|>) to to attempt to
-      -- derive the tiles from each other.
-      let
-        loc1 :: coords
-        loc1 =
-          let Just (base, mover) = loc1_by_base <|> Just
-                ( loc2
-                , fromJust $ movingByLocations' (Coords2D (x' - 1) (y' + 1))
-                                                (Coords2D x' y')
-                )
-          in  mover (liftLevel level) base
-
-        loc2 :: coords
-        loc2 =
-          let Just (base, mover) = loc2_by_base <|> Just
-                ( loc1
-                , fromJust $ movingByLocations' (Coords2D x' y')
-                                                (Coords2D (x' - 1) (y' + 1))
-                )
-          in  mover (liftLevel level) base
-
-        !tile_at_loc1 = tileAt level loc1
-        !tile_at_loc2 = tileAt level loc2
+      let !tile_at_loc1 = tileAt level loc1
+          !tile_at_loc2 = tileAt level loc2
 
       !new_mini <- if mini < cor
         then do
-          drawTile (xmirror x' + center_x) (ymirror y' + center_y) loc1 Visible
+          lift $ drawTile (xmirror x' + center_x)
+                          (ymirror y' + center_y)
+                          loc1
+                          Visible
           return $ if isObstacle tile_at_loc1 then cor else mini
         else return mini
 
       !new_maxi <- if maxi > cor
         then do
-          drawTile (xmirror (x' - 1) + center_x)
-                   (ymirror (y' + 1) + center_y)
-                   loc2
-                   Visible
+          lift $ drawTile (xmirror (x' - 1) + center_x)
+                          (ymirror (y' + 1) + center_y)
+                          loc2
+                          Visible
           return $ if isObstacle tile_at_loc2 then cor else maxi
         else return maxi
 
-      go slope_idx (v + slope_idx) (u + 1) new_mini new_maxi loc1 x' y'
+      go slope_idx (v + slope_idx) (u + 1) new_mini new_maxi x' y'
+
 
   -- Helper function to traverse all slopes
   {-# INLINE forSlopes_ #-}
