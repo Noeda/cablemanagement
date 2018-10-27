@@ -24,10 +24,17 @@ library
                        CM.LevelRender
                        CM.LiftLevel
                        CM.Portal
-                       CM.TerminalTextIO
                        CM.TileWorld
                        CM.TextIO
                        CM.WorldLike
+                       CM.PortableTextIO
+  if !impl(ghcjs)
+    exposed-modules:   CM.TerminalTextIO
+    c-sources:         cbits/terminal.c
+  else
+    exposed-modules:   CM.JavascriptTextIO
+    build-depends:     ghcjs-base
+    cpp-options:       -DGHCJS
   build-depends:       ansi-terminal
                       ,array
                       ,base >=4.9 && <5.0
@@ -36,11 +43,11 @@ library
                       ,exceptions
                       ,data-default-class
                       ,primitive
+                      ,stm
                       ,text
                       ,transformers
                       ,vector
   hs-source-dirs:      src
-  c-sources:           cbits/terminal.c
   ghc-options:         -Wall -fno-warn-name-shadowing -O2
   default-language:    Haskell2010
 

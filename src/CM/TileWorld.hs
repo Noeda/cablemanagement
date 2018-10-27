@@ -32,6 +32,7 @@ import           Data.Foldable
 import qualified Data.IntMap.Strict            as IM
 import qualified Data.Map.Strict               as M
 import           Data.Maybe
+import           Data.Monoid
 import           GHC.Generics
 
 import           CM.Coords

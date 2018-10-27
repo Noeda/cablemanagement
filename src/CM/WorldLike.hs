@@ -1,6 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE BangPatterns #-}
 
 module CM.WorldLike
   ( TilePortalWorldLike(..)
@@ -12,6 +13,7 @@ import           Control.Monad.Trans.State.Strict
 import           Data.Char
 import           Data.Default.Class
 import           Data.Foldable
+import           Data.Monoid
 import           Data.Proxy
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T

@@ -38,6 +38,10 @@ data Key
   | KeyX
   | KeyY
   | KeyZ
+  | KeyArrowLeft
+  | KeyArrowUp
+  | KeyArrowRight
+  | KeyArrowDown
   deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic, Enum )
 
 -- | Convenience function to turn a char into a key, if there is an obvious

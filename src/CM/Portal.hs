@@ -17,6 +17,7 @@ module CM.Portal
 where
 
 import           Data.Data
+import           Data.Semigroup
 import           GHC.Generics
 
 -- | Class of things that have a concept of being reversed.
