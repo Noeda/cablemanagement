@@ -3,7 +3,7 @@ module Main
   )
 where
 
-import           Criterion.Main
+import           CriterionShim
 
 import           FovBenchmarks
 import           LevelBenchmarks

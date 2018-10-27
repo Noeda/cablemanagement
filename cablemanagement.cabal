@@ -80,11 +80,16 @@ benchmark cablemanagement-benchmarks
   main-is:             Main.hs
   other-modules:       FovBenchmarks
                        LevelBenchmarks
+                       CriterionShim
   build-depends:       base >=4.9 && <5.0,
                        cablemanagement,
-                       criterion,
                        data-default-class,
                        transformers
+  if !impl(ghcjs)
+    build-depends:     criterion
+  else
+    build-depends:     time
+    cpp-options:       -DGHCJS
   hs-source-dirs:      benchmark
   ghc-options:         -Wall -fno-warn-name-shadowing -O2 -rtsopts
   default-language:    Haskell2010

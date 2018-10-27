@@ -8,7 +8,7 @@ module FovBenchmarks
 where
 
 import           Control.Monad.Trans.State.Strict
-import           Criterion
+import           CriterionShim
 import           Data.Default.Class
 
 import           CM.LevelRender

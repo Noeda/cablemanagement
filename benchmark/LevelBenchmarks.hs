@@ -5,7 +5,7 @@ module LevelBenchmarks
   )
 where
 
-import           Criterion
+import           CriterionShim
 import           Data.Foldable
 import           Data.Int
 
