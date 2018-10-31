@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE RankNTypes #-}
@@ -79,6 +80,7 @@ emptyNode = LevelNode {level = IMapLevel empty, portals = IM.empty}
 -- dynamically and link them with portals.
 data TileWorld tile = TileWorld
   { levels       :: !(IM.IntMap (LevelNode tile))
+  , tileMemory :: !(M.Map WorldSimpleCoords2D tile)
   , runningIndex :: !Int }
   deriving ( Eq, Ord, Show, Typeable, Data, Generic )
 
@@ -104,6 +106,10 @@ newtype TileWorldLevelKey = TileWorldLevelKey Int
 data WorldCoords2D = WorldCoords2D {-# UNPACK #-} !Int {-# UNPACK #-} !SwizzCoords2D
   deriving ( Eq, Ord, Show, Typeable, Data, Generic )
 
+instance LiftLevel WorldCoords2D WorldSimpleCoords2D where
+  {-# INLINE liftLevel #-}
+  liftLevel = toSimpleCoords
+
 -- | Same as `WorldCoords2D` but there is no swizzling or rotation information.
 --
 -- This stores just level key and coordinates on that level.
@@ -125,6 +131,18 @@ instance ToCoords2D WorldSimpleCoords2D where
 toSimpleCoords :: WorldCoords2D -> WorldSimpleCoords2D
 toSimpleCoords (WorldCoords2D level_key swizzled) =
   WorldSimpleCoords2D level_key (toCoords2D swizzled)
+
+instance TileMemorizer (TileWorld tile) WorldSimpleCoords2D tile where
+  {-# INLINE memorizedTileAt #-}
+  memorizedTileAt !world !coords = M.lookup coords (tileMemory world)
+
+  {-# INLINE memorizeTile #-}
+  memorizeTile !world !coords !tile = world { tileMemory = M.insert coords tile (tileMemory world) }
+
+instance RelativeCoordinable (TileWorld tile) WorldCoords2D where
+  {-# INLINE atRelativeCoords #-}
+  atRelativeCoords _world (WorldCoords2D level_key (SwizzCoords2D coords rot hswizz vswizz)) relativity =
+    WorldCoords2D level_key (SwizzCoords2D (coords .+ applyRotation rot relativity) rot hswizz vswizz)
 
 instance Default tile => TilePortalWorldLike (TileWorld tile) where
   type WorldCoords (TileWorld tile) = WorldCoords2D
@@ -152,7 +170,7 @@ instance Default tile => TilePortalWorldLike (TileWorld tile) where
 
   initial =
     let initial_running_index = 0
-     in (TileWorld { runningIndex = initial_running_index, levels = IM.empty },
+     in (TileWorld { runningIndex = initial_running_index, levels = IM.empty, tileMemory = M.empty },
          TileWorldLevelKey initial_running_index)
 
   addLevel lvl world =

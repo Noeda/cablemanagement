@@ -1,5 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE BangPatterns #-}
 
 module FovBenchmarks
@@ -7,6 +8,7 @@ module FovBenchmarks
   )
 where
 
+import           Control.Monad
 import           Control.Monad.Trans.State.Strict
 import           CriterionShim
 import           Data.Default.Class
@@ -24,14 +26,18 @@ instance TiledRenderer RenderCounter () where
 data Tile = Floor | Wall
 
 instance Obstacle Tile where
-  isObstacle Wall = True
-  isObstacle Floor = False
+  isObstacle Wall = 10
+  isObstacle Floor = 0
 
 instance Default Tile where
   def = Floor
 
 instance TileToRenderedTile Tile () where
   toRenderedTile _ _ = ()
+
+instance TileMemorizer (IMapLevel Tile) Coords2D Tile where
+  memorizedTileAt _ _ = Just Floor
+  memorizeTile l _ _ = l
 
 runRenderCounter :: RenderCounter () -> Int -> Int
 runRenderCounter (RenderCounter st) !x = execState st x
@@ -43,7 +49,7 @@ fovBenchmarks :: [Benchmark]
 fovBenchmarks =
   [ bench "compute field of view at 100x100 radius empty imap level raycasting"
     $ whnf
-        (runRenderCounter $ renderRaycastingView
+        (runRenderCounter $ void $ renderRaycastingView
           emptyImapLevel
           (relativeRenderView (Coords2D 50 50) (Coords2D 0 0) (Coords2D 100 100)
           )
@@ -52,7 +58,7 @@ fovBenchmarks =
         11
   , bench "compute field of view at 80x24 radius empty imap level raycasting"
     $ whnf
-        (runRenderCounter $ renderRaycastingView
+        (runRenderCounter $ void $ renderRaycastingView
           emptyImapLevel
           (relativeRenderView (Coords2D 40 12) (Coords2D 0 0) (Coords2D 80 24))
           ()

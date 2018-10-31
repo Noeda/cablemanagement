@@ -62,4 +62,7 @@ runBenchmark str runner = do
     runner
     modifyIORef' count (+1)
     go runner count
+#else
+import Criterion
+import Criterion.Main
 #endif
