@@ -158,6 +158,7 @@ data StopFun = StopFun
 
 instance Exception StopFun
 
+{-# INLINE runAnimatedTextIO #-}
 runAnimatedTextIO
   :: forall m tile a
    . (MonadIO m, MonadMask m, TiledRenderer m tile)
@@ -207,6 +208,7 @@ runAnimatedTextIO (AnimatedTextIO reader) = mask $ \restore -> do
     Left StopFun -> liftIO $ takeMVar result_mvar
     _            -> error "impossible"
 
+{-# INLINE animator #-}
 animator
   :: (MonadIO m, TiledRenderer m tile)
   => TChan (m DoFlush)
