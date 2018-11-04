@@ -1,4 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE LambdaCase #-}
@@ -33,6 +35,7 @@ import           System.IO.Unsafe               ( unsafePerformIO )
 
 import           CM.Coords
 import           CM.KeyInput
+import           CM.LevelRender
 import           CM.TextIO
 
 foreign import javascript "$r = document.createElement('span');" make_span_element :: IO JSVal
@@ -54,18 +57,26 @@ globalSpans :: MVar (M.Map (Int, Int) JSVal)
 globalSpans = unsafePerformIO $ newMVar M.empty
 {-# NOINLINE globalSpans #-}
 
-inputKey :: TVar (Maybe Key)
-inputKey = unsafePerformIO $ newTVarIO Nothing
-{-# NOINLINE inputKey #-}
-
 type AttributeArray = IA.IOUArray (Word16, Word16) Word64
 
 newtype JavascriptTextIOT m a = JavascriptTextIOT (ReaderT (AttributeArray, AttributeArray) m a)
-  deriving ( Monad, Applicative, Functor )
+  deriving ( Monad, Applicative, Functor, MonadThrow, MonadCatch, MonadMask )
 
 instance MonadIO m => MonadIO (JavascriptTextIOT m) where
   {-# INLINE liftIO #-}
   liftIO = JavascriptTextIOT . liftIO
+
+instance MonadIO m => TiledRenderer (JavascriptTextIOT m) (Attributes, Char) where
+  displaySize = terminalSize
+
+  {-# INLINE setTile #-}
+  setTile coords (atts, ch) = setChar atts ch coords
+
+  {-# INLINE flushTiles #-}
+  flushTiles = flush
+
+  {-# INLINE clearTiles #-}
+  clearTiles = clear
 
 type JavascriptTextIO = JavascriptTextIOT IO
 
@@ -147,16 +158,6 @@ spanner term_div action = do
   finally action $ do
     liftIO $ detach_keydown_handler body callback
     liftIO $ releaseCallback callback
-
-getInputChar :: MonadIO m => m Key
-getInputChar = liftIO $ atomically $ readTVar inputKey >>= \case
-  Nothing -> retry
-  Just ch -> do
-    writeTVar inputKey Nothing
-    return ch
-
-instance MonadIO m => KeyInteractiveIO (JavascriptTextIOT m) where
-  waitForKey = liftIO getInputChar
 
 instance MonadIO m => TextIO (JavascriptTextIOT m) where
   terminalSize = return $ Coords2D (fromIntegral terminalW) (fromIntegral terminalH)

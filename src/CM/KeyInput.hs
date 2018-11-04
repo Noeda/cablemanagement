@@ -1,15 +1,25 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE LambdaCase #-}
 
 module CM.KeyInput
   ( Key(..)
   , KeyInteractiveIO(..)
   , charToKey
+#ifdef GHCJS
+  , inputKey
+#endif
   )
 where
 
 import           Data.Data
 import           GHC.Generics
+#ifdef GHCJS
+import System.IO.Unsafe
+import Control.Concurrent.STM
+import Control.Monad.IO.Class
+#endif
 
 data Key
   = KeyA
@@ -104,6 +114,21 @@ charToKey _   = Nothing
 class KeyInteractiveIO m where
   waitForKey :: m Key
 
+#ifdef GHCJS
+inputKey :: TVar (Maybe Key)
+inputKey = unsafePerformIO $ newTVarIO Nothing
+{-# NOINLINE inputKey #-}
+
+getInputChar :: MonadIO m => m Key
+getInputChar = liftIO $ atomically $ readTVar inputKey >>= \case
+  Nothing -> retry
+  Just ch -> do
+    writeTVar inputKey Nothing
+    return ch
+
+instance KeyInteractiveIO IO where
+  waitForKey = liftIO getInputChar
+#else
 instance KeyInteractiveIO IO where
   waitForKey = go
    where
@@ -112,3 +137,4 @@ instance KeyInteractiveIO IO where
       case charToKey ch of
         Nothing -> go
         Just key -> return key
+#endif
