@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -13,6 +14,7 @@ import           Control.Monad.Trans.State.Strict
 import           Data.Char
 import           Data.Default.Class
 import           Data.Foldable
+import           Data.Maybe
 import           Data.Monoid
 import           Data.Proxy
 import           Data.Text                      ( Text )
@@ -83,7 +85,7 @@ worldFromText
      , LiftLevel w w'
      )
   => [(Char, TileOrientation, TileRotation, PortalSwizzle, PortalSwizzle)]
-  -> [[Text]]
+  -> [([Text], [(Char, tile)])]
   -> w
 worldFromText specportalletters texts =
   world
@@ -136,7 +138,7 @@ worldFromText specportalletters texts =
         put $ old { world = new_world }
 
 
-  toLevel text = do
+  toLevel (text, M.fromList -> tile_overrides) = do
     let (lined, portals) =
           runState (go text 0) (M.empty :: M.Map Coords2D Char)
         lvl = fromPairList lined :: Level w
@@ -154,7 +156,7 @@ worldFromText specportalletters texts =
     go (line : rest) y = do
       pairlist <- for (zip [0 ..] (T.unpack line)) $ \(x, ch) -> do
         let !coords = Coords2D x y
-            tile    = charToTile ch
+            tile    = fromMaybe (charToTile ch) $ M.lookup ch tile_overrides
         if toLower ch `M.member` portalletters
           then do
             modify $ M.insert coords ch

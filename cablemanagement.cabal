@@ -18,6 +18,7 @@ flag build-toys
 library
   exposed-modules:     CM.Coords
                        CM.ArrayLevel
+                       CM.AnimatedTextIO
                        CM.ImapLevel
                        CM.KeyInput
                        CM.LevelLike
@@ -26,6 +27,7 @@ library
                        CM.Portal
                        CM.TileWorld
                        CM.TextIO
+                       CM.MonotonicTime
                        CM.WorldLike
                        CM.PortableTextIO
   if !impl(ghcjs)
@@ -39,6 +41,7 @@ library
                       ,array
                       ,base >=4.9 && <5.0
                       ,bytestring
+                      ,clock
                       ,containers
                       ,exceptions
                       ,data-default-class

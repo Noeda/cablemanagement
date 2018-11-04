@@ -30,12 +30,6 @@ class TextIO m where
   clear :: m ()
   flush :: m ()
 
-instance TextIO m => TiledRenderer m (Attributes, Char) where
-  displaySize = terminalSize
-
-  {-# INLINE setTile #-}
-  setTile coords (atts, ch) = setChar atts ch coords
-
 -- | This describes the foreground and background color of some cell in
 -- terminal.
 --

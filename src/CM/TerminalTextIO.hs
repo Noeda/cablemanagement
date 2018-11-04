@@ -1,4 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
@@ -38,6 +40,7 @@ import           System.IO
 
 import           CM.Coords
 import           CM.KeyInput
+import           CM.LevelRender
 import           CM.TextIO
 
 foreign import ccall setup_terminal :: Ptr TermiosStruct -> IO ()
@@ -67,7 +70,7 @@ initialTerminalState = do
     }
 
 newtype TerminalTextIOT m a = TerminalTextIOT (StateT TerminalState m a)
-  deriving ( Functor, Applicative, Monad, MonadFix, MonadIO )
+  deriving ( Functor, Applicative, Monad, MonadFix, MonadIO, MonadThrow, MonadCatch, MonadMask )
 
 type TerminalTextIO = TerminalTextIOT IO
 
@@ -77,13 +80,19 @@ getTerminalSize = liftIO $ alloca $ \w_ptr -> alloca $ \h_ptr -> do
   Coords2D <$> (fromIntegral <$> peek w_ptr) <*> (fromIntegral <$> peek h_ptr)
 
 instance MonadIO m => KeyInteractiveIO (TerminalTextIOT m) where
-  waitForKey = liftIO go
-   where
-    go = do
-      ch <- getChar
-      case charToKey ch of
-        Nothing -> go
-        Just key -> return key
+  waitForKey = liftIO waitForKey
+
+instance MonadIO m => TiledRenderer (TerminalTextIOT m) (Attributes, Char) where
+  displaySize = terminalSize
+
+  {-# INLINE setTile #-}
+  setTile coords (atts, ch) = setChar atts ch coords
+
+  {-# INLINE flushTiles #-}
+  flushTiles = flush
+
+  {-# INLINE clearTiles #-}
+  clearTiles = clear
 
 instance MonadIO m => TextIO (TerminalTextIOT m) where
   terminalSize = getTerminalSize

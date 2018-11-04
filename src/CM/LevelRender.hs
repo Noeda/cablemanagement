@@ -75,6 +75,8 @@ import           CM.LiftLevel
 class TiledRenderer m displaytile | m -> displaytile where
   displaySize :: m Coords2D
   setTile :: Coords2D -> displaytile -> m ()
+  flushTiles :: m ()
+  clearTiles :: m ()
 
 data Obscuring = Visible | Obscured
   deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic, Enum )
@@ -484,11 +486,9 @@ renderRaycastingView !world !view !entityview =
     modify $ \(SPair !paircoords world) -> SPair
       (IS.insert (coords2DToInt $ Coords2D dispx dispy) paircoords)
       (memorizeTile world (liftLevel coords :: memorycoords) tile)
-    lift $ do
-      case viewEntity coords entityview of
-        Nothing ->
-          setTile (Coords2D dispx dispy) (toRenderedTile tile Visible)
-        Just tile -> setTile (Coords2D dispx dispy) tile
+    lift $ case viewEntity coords entityview of
+      Nothing   -> setTile (Coords2D dispx dispy) (toRenderedTile tile Visible)
+      Just tile -> setTile (Coords2D dispx dispy) tile
 
 
 {-# INLINE distanceToLine #-}

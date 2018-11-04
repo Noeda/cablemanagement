@@ -103,3 +103,12 @@ charToKey _   = Nothing
 
 class KeyInteractiveIO m where
   waitForKey :: m Key
+
+instance KeyInteractiveIO IO where
+  waitForKey = go
+   where
+    go = do
+      ch <- getChar
+      case charToKey ch of
+        Nothing -> go
+        Just key -> return key

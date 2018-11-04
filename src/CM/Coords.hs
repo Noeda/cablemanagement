@@ -45,8 +45,9 @@ coords2DToInt (Coords2D x y) =
 
 {-# INLINE intToCoords2D #-}
 intToCoords2D :: Int -> Coords2D
-intToCoords2D val = Coords2D (fromIntegral (val .&. 0xffff0000 `shiftR` 16))
-                             (fromIntegral (val .&. 0x0000ffff))
+intToCoords2D val = Coords2D
+  (fromIntegral ((val .&. 0xffff0000) `shiftR` 16))
+  (fromIntegral (val .&. 0x0000ffff))
 
 -- | Same as `Coords2D` but may have different idea of how to move in each
 -- cardinal direction. (This is influenced by portals).
