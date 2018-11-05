@@ -47,11 +47,18 @@ foreign import javascript unsafe "$1.style.cssText = $2" set_style :: JSVal -> J
 foreign import javascript "$r = document.getElementById('content')" get_content_div :: IO JSVal
 foreign import javascript "$1.addEventListener('keydown', $2);" attach_keydown_handler :: JSVal -> Callback (JSVal -> IO ()) -> IO ()
 foreign import javascript "$1.removeEventListener('keydown', $2);" detach_keydown_handler :: JSVal -> Callback (JSVal -> IO ()) -> IO ()
+foreign import javascript "$1.removeEventListener('mousedown', $2);" detach_mousedown_handler :: JSVal -> Callback (JSVal -> IO ()) -> IO ()
 foreign import javascript "$r = document.getElementsByTagName('body')[0];" get_body :: IO JSVal
 foreign import javascript unsafe "$r = $1.key || String.fromCharCode($1.keyCode);" get_event_char :: JSVal -> IO JSString
+foreign import javascript unsafe "$r = $1.clientX;" get_mouse_event_x :: JSVal -> IO Double
+foreign import javascript unsafe "$r = $1.clientY;" get_mouse_event_y :: JSVal -> IO Double
+foreign import javascript unsafe "$r = window.innerWidth;" get_window_w :: IO Double
+foreign import javascript unsafe "$r = window.innerHeight;" get_window_h :: IO Double
 --foreign import javascript "console.log($1);" console_log :: JSString -> IO ()
 foreign import javascript "$r = 'color: rgb(' + String(($1) * 4) + ',' + String(($2) * 4) + ',' + String(($3) * 4) + ');background: rgb(' + String(($4) * 4) + ',' + String(($5) * 4) + ',' + String(($6) * 4) + ');';"
   to_javascript_colorstyle :: Word8 -> Word8 -> Word8 -> Word8 -> Word8 -> Word8 -> IO JSString
+
+foreign import javascript "$1.addEventListener('mousedown', $2);" attach_mousedown_handler :: JSVal -> Callback (JSVal -> IO ()) -> IO ()
 
 globalSpans :: MVar (M.Map (Int, Int) JSVal)
 globalSpans = unsafePerformIO $ newMVar M.empty
@@ -151,13 +158,27 @@ spanner term_div action = do
         Just{}  -> retry
       _ -> return ()
 
+
+  mouse_callback <- liftIO $ asyncCallback1 $ \val -> do
+    client_x <- get_mouse_event_x val
+    client_y <- get_mouse_event_y val
+    w        <- get_window_w
+    h        <- get_window_h
+    atomically $ readTVar inputKey >>= \case
+      Nothing ->
+        writeTVar inputKey (Just $ MouseClick (client_x / w) (client_y / h))
+      Just{} -> retry
+
   body <- liftIO get_body
   liftIO $ set_style body "background: #000;"
   liftIO $ attach_keydown_handler body callback
+  liftIO $ attach_mousedown_handler body mouse_callback
 
   finally action $ do
     liftIO $ detach_keydown_handler body callback
+    liftIO $ detach_mousedown_handler body mouse_callback
     liftIO $ releaseCallback callback
+    liftIO $ releaseCallback mouse_callback
 
 instance MonadIO m => TextIO (JavascriptTextIOT m) where
   terminalSize = return $ Coords2D (fromIntegral terminalW) (fromIntegral terminalH)

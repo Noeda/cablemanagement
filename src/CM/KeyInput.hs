@@ -52,7 +52,8 @@ data Key
   | KeyArrowUp
   | KeyArrowRight
   | KeyArrowDown
-  deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic, Enum )
+  | MouseClick !Double !Double
+  deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic )
 
 -- | Convenience function to turn a char into a key, if there is an obvious
 -- corresponding key.
