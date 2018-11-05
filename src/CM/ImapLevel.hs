@@ -35,17 +35,26 @@ import           CM.LevelLike
 newtype IMapLevel tile = IMapLevel (IM.IntMap tile)
   deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic, Functor, Foldable, Traversable )
 
-instance Default tile => LevelLike (IMapLevel tile) Coords2D tile where
+instance (Default tile, Eq tile) => LevelLike (IMapLevel tile) Coords2D tile where
   {-# INLINE tileAt #-}
   tileAt (IMapLevel tilemap) coords =
     fromMaybe def $ IM.lookup (toIntmapKey coords) tilemap
+
+  {-# INLINE setTile #-}
+  setTile (IMapLevel tilemap) coords block = IMapLevel $
+    if block == def
+      then IM.delete (toIntmapKey coords) tilemap
+      else IM.insert (toIntmapKey coords) block tilemap
 
   {-# INLINE empty #-}
   empty = IMapLevel IM.empty
 
   fromPairList pairs = IMapLevel $ foldl' folder IM.empty pairs
    where
-    folder imap (coords, block) = IM.insert (toIntmapKey coords) block imap
+    folder imap (coords, block) =
+      if block /= def
+        then IM.insert (toIntmapKey coords) block imap
+        else imap
 
 {-# INLINE toIntmapKey #-}
 toIntmapKey :: Coords2D -> Int

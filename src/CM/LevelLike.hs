@@ -19,6 +19,7 @@ import qualified Data.Text                     as T
 -- | Class of level-like things.
 class LevelLike l coords block | l -> coords block where
   tileAt       :: l -> coords -> block
+  setTile      :: l -> coords -> block -> l
   fromPairList :: [(coords, block)] -> l
   empty        :: l
 

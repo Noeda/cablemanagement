@@ -74,7 +74,7 @@ import           CM.LiftLevel
 -- doesn't assume character display.
 class TiledRenderer m displaytile | m -> displaytile where
   displaySize :: m Coords2D
-  setTile :: Coords2D -> displaytile -> m ()
+  drawTile :: Coords2D -> displaytile -> m ()
   flushTiles :: m ()
   clearTiles :: m ()
 
@@ -157,8 +157,8 @@ renderLevel level renderview entityview = do
           !tile        = tileAt level src_coords
           !displaytile = toRenderedTile tile Visible
       case viewEntity src_coords entityview of
-        Nothing   -> setTile (Coords2D dx dy) displaytile
-        Just tile -> setTile (Coords2D dx dy) tile
+        Nothing   -> drawTile (Coords2D dx dy) displaytile
+        Just tile -> drawTile (Coords2D dx dy) tile
  where
   Coords2D !dox !doy = topLeftOnDisplay renderview
   Coords2D !lx  !ly  = topLeftOnLevel renderview
@@ -202,7 +202,7 @@ renderNonVisibleTiles !world !view !(RenderedCoordinates exclusions) =
           Nothing             -> return ()
           Just (tile :: tile) -> do
             let !drawtile = toRenderedTile tile Obscured
-            setTile disp_coords drawtile
+            drawTile disp_coords drawtile
  where
   Coords2D !disp_left !disp_top = relativeTopLeft view
   Coords2D !disp_right !disp_bottom =
@@ -393,7 +393,7 @@ renderRaycastingView !world !view !entityview =
     $ do
         SPair _ !world <- get
         let !tile = tileAt world (levelStartCoords view)
-        drawTile center_x center_y (levelStartCoords view) tile
+        addTile center_x center_y (levelStartCoords view) tile
         go 0
  where
   PrecomputedRays !raw_rays = getCachedPrecomputedRays
@@ -456,7 +456,7 @@ renderRaycastingView !world !view !entityview =
           put $ RayCastState coords dx' dy' new_penetration
           -- 0.27 came from trial and error, this value should be between 0.0
           -- and 0.5 or the fov algorithm becomes unsound.
-          lift $ lift $ when (dist <= 0.27001) $ drawTile dx' dy' coords tile
+          lift $ lift $ when (dist <= 0.27001) $ addTile dx' dy' coords tile
           when
               (  new_penetration
               <= 0
@@ -479,16 +479,15 @@ renderRaycastingView !world !view !entityview =
 
   go !_ = return ()
 
-  {-# INLINE drawTile #-}
-  drawTile
-    :: Int16 -> Int16 -> coords -> tile -> StateT (SPair IS.IntSet l) m ()
-  drawTile !dispx !dispy !coords !tile = do
+  {-# INLINE addTile #-}
+  addTile :: Int16 -> Int16 -> coords -> tile -> StateT (SPair IS.IntSet l) m ()
+  addTile !dispx !dispy !coords !tile = do
     modify $ \(SPair !paircoords world) -> SPair
       (IS.insert (coords2DToInt $ Coords2D dispx dispy) paircoords)
       (memorizeTile world (liftLevel coords :: memorycoords) tile)
     lift $ case viewEntity coords entityview of
-      Nothing   -> setTile (Coords2D dispx dispy) (toRenderedTile tile Visible)
-      Just tile -> setTile (Coords2D dispx dispy) tile
+      Nothing   -> drawTile (Coords2D dispx dispy) (toRenderedTile tile Visible)
+      Just tile -> drawTile (Coords2D dispx dispy) tile
 
 
 {-# INLINE distanceToLine #-}
@@ -593,7 +592,7 @@ renderBeamcastFOV !level !view !entityview !num_beams = do
   renderQuadrant True  True
 
   -- Render the center tile
-  drawTile center_x center_y (levelStartCoords view) Visible
+  addTile center_x center_y (levelStartCoords view) Visible
  where
   -- Figure out widths and heights and where the center of the specified view
   -- is on the display.
@@ -668,19 +667,19 @@ renderBeamcastFOV !level !view !entityview !num_beams = do
 
       !new_mini <- if mini < cor
         then do
-          lift $ drawTile (xmirror x' + center_x)
-                          (ymirror y' + center_y)
-                          loc1
-                          Visible
+          lift $ addTile (xmirror x' + center_x)
+                         (ymirror y' + center_y)
+                         loc1
+                         Visible
           return $ if isObstacle tile_at_loc1 > 0 then cor else mini
         else return mini
 
       !new_maxi <- if maxi > cor
         then do
-          lift $ drawTile (xmirror (x' - 1) + center_x)
-                          (ymirror (y' + 1) + center_y)
-                          loc2
-                          Visible
+          lift $ addTile (xmirror (x' - 1) + center_x)
+                         (ymirror (y' + 1) + center_y)
+                         loc2
+                         Visible
           return $ if isObstacle tile_at_loc2 > 0 then cor else maxi
         else return maxi
 
@@ -698,10 +697,10 @@ renderBeamcastFOV !level !view !entityview !num_beams = do
   -- the tile as currently visible (as opposed not visible which is usually
   -- rendered as a gray tile). Currently this algorithm only renders visible
   -- tiles so visibility is always 'Visible'.
-  drawTile !dx !dy !_ !_
+  addTile !dx !dy !_ !_
     | dx < disp_left || dy < disp_top || dx > disp_right || dy > disp_bottom
     = return () -- Don't draw anything out of bounds.
-  drawTile !dx !dy !coords !visibility = case viewEntity coords entityview of
-    Nothing ->
-      setTile (Coords2D dx dy) (toRenderedTile (tileAt level coords) visibility)
-    Just tile -> setTile (Coords2D dx dy) tile
+  addTile !dx !dy !coords !visibility = case viewEntity coords entityview of
+    Nothing -> drawTile (Coords2D dx dy)
+                        (toRenderedTile (tileAt level coords) visibility)
+    Just tile -> drawTile (Coords2D dx dy) tile

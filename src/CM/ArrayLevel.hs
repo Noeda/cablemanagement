@@ -37,6 +37,9 @@ import           CM.LevelLike
 newtype ArrayLevel tile = ArrayLevel (A.Array Coords2D tile)
   deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic )
 
+-- | `setTile` is extremely inefficient for `ArrayLevel`. It creates an entire
+-- new copy from scratch. Avoid using `ArrayLevel` if you need to ever modify
+-- the level.
 instance (Eq tile, Default tile) => LevelLike (ArrayLevel tile) Coords2D tile where
   {-# INLINE tileAt #-}
   tileAt (ArrayLevel !arr) coords@(Coords2D !x !y) =
@@ -45,6 +48,12 @@ instance (Eq tile, Default tile) => LevelLike (ArrayLevel tile) Coords2D tile wh
       else arr A.! coords
    where
     (Coords2D !minx !miny, Coords2D !maxx !maxy) = A.bounds arr
+
+  {-# INLINE setTile #-}
+  setTile (ArrayLevel !arr) coords block =
+    let pairlist = A.assocs arr
+        pairlist' = fmap (\(bcoords, bblock) -> (bcoords, if bcoords == coords then block else bblock)) pairlist
+     in fromPairList pairlist'
 
   {-# INLINE empty #-}
   empty = ArrayLevel $ A.array (Coords2D 0 0, Coords2D (-1) (-1)) []

@@ -124,8 +124,8 @@ instance (MonadIO m, TiledRenderer m tile) => TiledRenderer (AnimatedTextIO m ti
   {-# INLINEABLE displaySize #-}
   displaySize = getDisplaySize
 
-  {-# INLINE setTile #-}
-  setTile coords (StaticTile tile) = AnimatedTextIO $ do
+  {-# INLINE drawTile #-}
+  drawTile coords (StaticTile tile) = AnimatedTextIO $ do
     let !offset = coords2DToInt coords
     env <- ask
     liftIO $ atomically $ do
@@ -133,7 +133,7 @@ instance (MonadIO m, TiledRenderer m tile) => TiledRenderer (AnimatedTextIO m ti
         IM.delete offset old
       modifyTVar (staticTiles env) $ \old ->
         IM.insert offset tile old
-  setTile coords (AnimatedTile func) = AnimatedTextIO $ do
+  drawTile coords (AnimatedTile func) = AnimatedTextIO $ do
     let !offset = coords2DToInt coords
     env <- ask
     liftIO $ atomically $ do
@@ -258,10 +258,10 @@ animator mule_tvar animated_tiles static_tiles clear_before_next_flush dont_flus
     void $ flip IM.traverseWithKey tiles $ \offset (AnimatedTile_ func) -> do
       let !coords = intToCoords2D offset
       !tile <- func (coords .+ doffset) now
-      setTile coords tile
+      drawTile coords tile
     void $ flip IM.traverseWithKey static $ \offset tile -> do
       let !coords = intToCoords2D offset
-      setTile coords tile
+      drawTile coords tile
     liftIO $ atomically $ do
       writeTVar static_tiles            IM.empty
       writeTVar clear_before_next_flush False

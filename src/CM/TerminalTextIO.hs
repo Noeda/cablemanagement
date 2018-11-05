@@ -85,8 +85,8 @@ instance MonadIO m => KeyInteractiveIO (TerminalTextIOT m) where
 instance MonadIO m => TiledRenderer (TerminalTextIOT m) (Attributes, Char) where
   displaySize = terminalSize
 
-  {-# INLINE setTile #-}
-  setTile coords (atts, ch) = setChar atts ch coords
+  {-# INLINE drawTile #-}
+  drawTile coords (atts, ch) = setChar atts ch coords
 
   {-# INLINE flushTiles #-}
   flushTiles = flush

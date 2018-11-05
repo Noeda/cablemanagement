@@ -50,8 +50,13 @@ data WorldLevel tile
   deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic )
 
 instance (Default tile, Eq tile) => LevelLike (WorldLevel tile) Coords2D tile where
+  {-# INLINE tileAt #-}
   tileAt (IMapLevel lvl) coords = tileAt lvl coords
   tileAt (ArrayLevel lvl) coords = tileAt lvl coords
+  {-# INLINE setTile #-}
+  setTile (IMapLevel lvl) coords block = IMapLevel $ setTile lvl coords block
+  setTile (ArrayLevel lvl) coords block = ArrayLevel $ setTile lvl coords block
+
   fromPairList = IMapLevel . fromPairList
   empty = IMapLevel empty
 
@@ -73,7 +78,7 @@ data LevelNode tile = LevelNode
   , portals :: !(IM.IntMap (M.Map TileOrientation (TilePortal WorldSimpleCoords2D))) }
   deriving ( Eq, Ord, Show, Typeable, Data, Generic )
 
-emptyNode :: Default tile => LevelNode tile
+emptyNode :: (Default tile, Eq tile) => LevelNode tile
 emptyNode = LevelNode {level = IMapLevel empty, portals = IM.empty}
 
 -- | This is the type of tile world, where you can add and remove levels
@@ -144,7 +149,7 @@ instance RelativeCoordinable (TileWorld tile) WorldCoords2D where
   atRelativeCoords _world (WorldCoords2D level_key (SwizzCoords2D coords rot hswizz vswizz)) relativity =
     WorldCoords2D level_key (SwizzCoords2D (coords .+ applyRotation rot relativity) rot hswizz vswizz)
 
-instance Default tile => TilePortalWorldLike (TileWorld tile) where
+instance (Default tile, Eq tile) => TilePortalWorldLike (TileWorld tile) where
   type WorldCoords (TileWorld tile) = WorldCoords2D
   type WorldPortalCoords (TileWorld tile) = WorldSimpleCoords2D
   type LevelCoords (TileWorld tile) = Coords2D
@@ -180,10 +185,20 @@ instance Default tile => TilePortalWorldLike (TileWorld tile) where
         ,\coords -> WorldCoords2D index (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
 
 instance (Default tile, Eq tile) => LevelLike (TileWorld tile) WorldCoords2D tile where
-  tileAt world (WorldCoords2D levelkey swizzcoords) =
+  {-# INLINEABLE tileAt #-}
+  tileAt !world (WorldCoords2D !levelkey !swizzcoords) =
     case lvl of
       IMapLevel level -> tileAt level coords
       ArrayLevel level -> tileAt level coords
+   where
+    coords = toCoords2D swizzcoords
+    lvl = level $ fromMaybe emptyNode $ IM.lookup levelkey (levels world)
+
+  {-# INLINEABLE setTile #-}
+  setTile !world (WorldCoords2D !levelkey !swizzcoords) !block =
+    case lvl of
+      IMapLevel level -> world { levels = IM.adjust (\node -> node { level = IMapLevel $ setTile level coords block }) levelkey (levels world) }
+      ArrayLevel level -> world { levels = IM.adjust (\node -> node { level = ArrayLevel $ setTile level coords block }) levelkey (levels world) }
    where
     coords = toCoords2D swizzcoords
     lvl = level $ fromMaybe emptyNode $ IM.lookup levelkey (levels world)

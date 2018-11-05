@@ -69,8 +69,8 @@ instance MonadIO m => MonadIO (JavascriptTextIOT m) where
 instance MonadIO m => TiledRenderer (JavascriptTextIOT m) (Attributes, Char) where
   displaySize = terminalSize
 
-  {-# INLINE setTile #-}
-  setTile coords (atts, ch) = setChar atts ch coords
+  {-# INLINE drawTile #-}
+  drawTile coords (atts, ch) = setChar atts ch coords
 
   {-# INLINE flushTiles #-}
   flushTiles = flush
