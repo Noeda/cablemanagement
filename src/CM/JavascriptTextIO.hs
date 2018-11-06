@@ -193,6 +193,7 @@ instance MonadIO m => TextIO (JavascriptTextIOT m) where
         (fromIntegral x, fromIntegral y)
         (coerce attributes .|. (fromIntegral (ord ch .&. 0xfffffff) `shiftL` 36))
 
+  {-# INLINE clear #-}
   clear = do
     (!arr, _) <- JavascriptTextIOT ask
     Coords2D !tw !th <- terminalSize
@@ -201,13 +202,14 @@ instance MonadIO m => TextIO (JavascriptTextIOT m) where
         (coerce (colorsToAttributes (Color3 0 0 0) (Color3 0 0 0)) .|.
          (fromIntegral (ord ' ' .&. 0xfffffff) `shiftL` 36))
 
+  {-# INLINE flush #-}
   flush = JavascriptTextIOT $ do
-    (arr, arr2) <- ask
+    (!arr, !arr2) <- ask
     display_size <- liftIO $ IA.getBounds arr
-    liftIO $ withMVar globalSpans $ \spans ->
+    liftIO $ withMVar globalSpans $ \(!spans) ->
      for_ (IA.range display_size) $ \idx@(!x, !y) -> do
-      flush_w64 <- IA.readArray arr idx :: IO Word64
-      display_w64 <- IA.readArray arr2 idx :: IO Word64
+      !flush_w64 <- IA.readArray arr idx :: IO Word64
+      !display_w64 <- IA.readArray arr2 idx :: IO Word64
       when (flush_w64 /= display_w64) $ do
         let Just !span = M.lookup (fromIntegral x, fromIntegral y) spans
             (Color3 !fr !fg !fb, Color3 !br !bg !bb) =
