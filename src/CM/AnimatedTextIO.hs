@@ -40,6 +40,7 @@ data DoFlush = DoFlush | DontFlush
 data AnimateState m tile = AnimateState
   { animatedTiles :: !(TVar (IM.IntMap (AnimatedTile_ m tile)))
   , staticTiles :: !(TVar (IM.IntMap tile))
+  , staticChars :: !(TVar (IM.IntMap (Attributes, Char)))
   , clearBeforeNextFlush :: !(TVar Bool)
   , dontFlushCounter :: !(TVar Int)
   , doffsetVar :: !(TVar Coords2D)
@@ -97,7 +98,14 @@ instance (MonadIO m, TextIO m, TiledRenderer m tile) => TextIO (AnimatedTextIO m
   {-# INLINE setChar #-}
   setChar atts ch coords = AnimatedTextIO $ do
     env <- ask
-    liftIO $ atomically $ writeTChan (mule env) $ setChar atts ch coords >> pure DontFlush
+    let !offset = coords2DToInt coords
+    liftIO $ atomically $ do
+      modifyTVar (animatedTiles env) $ \old ->
+        IM.delete offset old
+      modifyTVar (staticTiles env) $ \old ->
+        IM.delete offset old
+      modifyTVar (staticChars env) $ \old ->
+        IM.insert offset (atts, ch) old
 
   {-# INLINE flush #-}
   flush = AnimatedTextIO $ do
@@ -133,6 +141,8 @@ instance (MonadIO m, TiledRenderer m tile) => TiledRenderer (AnimatedTextIO m ti
         IM.delete offset old
       modifyTVar (staticTiles env) $ \old ->
         IM.insert offset tile old
+      modifyTVar (staticChars env) $ \old ->
+        IM.delete offset old
   drawTile coords (AnimatedTile func) = AnimatedTextIO $ do
     let !offset = coords2DToInt coords
     env <- ask
@@ -140,6 +150,8 @@ instance (MonadIO m, TiledRenderer m tile) => TiledRenderer (AnimatedTextIO m ti
       modifyTVar (animatedTiles env) $ \old ->
         IM.insert offset (AnimatedTile_ func) old
       modifyTVar (staticTiles env) $ \old ->
+        IM.delete offset old
+      modifyTVar (staticChars env) $ \old ->
         IM.delete offset old
 
   flushTiles = AnimatedTextIO $ do
@@ -161,12 +173,13 @@ instance Exception StopFun
 {-# INLINE runAnimatedTextIO #-}
 runAnimatedTextIO
   :: forall m tile a
-   . (MonadIO m, MonadMask m, TiledRenderer m tile)
+   . (MonadIO m, MonadMask m, TiledRenderer m tile, TextIO m)
   => AnimatedTextIO m tile a
   -> m a
 runAnimatedTextIO (AnimatedTextIO reader) = mask $ \restore -> do
   tiles_tvar              <- liftIO $ newTVarIO IM.empty
   static_tvar             <- liftIO $ newTVarIO IM.empty
+  static_chars_tvar       <- liftIO $ newTVarIO IM.empty
   clear_before_next_flush <- liftIO $ newTVarIO True
   mule_tchan              <- liftIO $ newTChanIO :: m (TChan (m DoFlush))
   dont_flush_counter      <- liftIO $ newTVarIO 0
@@ -184,6 +197,7 @@ runAnimatedTextIO (AnimatedTextIO reader) = mask $ \restore -> do
               { mule                 = mule_tchan
               , animatedTiles        = tiles_tvar
               , staticTiles          = static_tvar
+              , staticChars          = static_chars_tvar
               , clearBeforeNextFlush = clear_before_next_flush
               , dontFlushCounter     = dont_flush_counter
               , doffsetVar           = doffset_var
@@ -200,6 +214,7 @@ runAnimatedTextIO (AnimatedTextIO reader) = mask $ \restore -> do
     (animator mule_tchan
               tiles_tvar
               static_tvar
+              static_chars_tvar
               clear_before_next_flush
               dont_flush_counter
               doffset_var
@@ -210,15 +225,16 @@ runAnimatedTextIO (AnimatedTextIO reader) = mask $ \restore -> do
 
 {-# INLINE animator #-}
 animator
-  :: (MonadIO m, TiledRenderer m tile)
+  :: (MonadIO m, TiledRenderer m tile, TextIO m)
   => TChan (m DoFlush)
   -> TVar (IM.IntMap (AnimatedTile_ m tile))
   -> TVar (IM.IntMap tile)
+  -> TVar (IM.IntMap (Attributes, Char))
   -> TVar Bool
   -> TVar Int
   -> TVar Coords2D
   -> m ()
-animator mule_tvar animated_tiles static_tiles clear_before_next_flush dont_flush_counter doffset_var
+animator mule_tvar animated_tiles static_tiles static_chars_tvar clear_before_next_flush dont_flush_counter doffset_var
   = do
     now <- getMonotonicTime
     go now
@@ -245,11 +261,12 @@ animator mule_tvar animated_tiles static_tiles clear_before_next_flush dont_flus
     go next_previous_tick
 
   refresh = do
-    (static, tiles, do_clear, doffset) <-
+    (static, static_chars, tiles, do_clear, doffset) <-
       liftIO
       $   atomically
-      $   (,,,)
+      $   (,,,,)
       <$> readTVar static_tiles
+      <*> readTVar static_chars_tvar
       <*> readTVar animated_tiles
       <*> readTVar clear_before_next_flush
       <*> readTVar doffset_var
@@ -262,7 +279,10 @@ animator mule_tvar animated_tiles static_tiles clear_before_next_flush dont_flus
     void $ flip IM.traverseWithKey static $ \offset tile -> do
       let !coords = intToCoords2D offset
       drawTile coords tile
+    void $ flip IM.traverseWithKey static_chars $ \offset (atts, char) ->
+      setChar atts char (intToCoords2D offset)
     liftIO $ atomically $ do
       writeTVar static_tiles            IM.empty
+      writeTVar static_chars_tvar       IM.empty
       writeTVar clear_before_next_flush False
     flushTiles
