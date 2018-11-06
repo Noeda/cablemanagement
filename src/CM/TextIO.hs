@@ -26,6 +26,8 @@ import           Control.Monad
 import           Data.Bits
 import           Data.Data
 import           Data.Foldable
+import           Data.Monoid
+import           Data.Semigroup
 import           Data.String
 import qualified Data.Text                     as T
 import           Data.Word
