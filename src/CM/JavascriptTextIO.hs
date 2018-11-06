@@ -49,13 +49,14 @@ foreign import javascript "$1.addEventListener('keydown', $2);" attach_keydown_h
 foreign import javascript "$1.removeEventListener('keydown', $2);" detach_keydown_handler :: JSVal -> Callback (JSVal -> IO ()) -> IO ()
 foreign import javascript "$1.removeEventListener('mousedown', $2);" detach_mousedown_handler :: JSVal -> Callback (JSVal -> IO ()) -> IO ()
 foreign import javascript "$r = document.getElementsByTagName('body')[0];" get_body :: IO JSVal
+foreign import javascript "$r = window;" get_window :: IO JSVal
 foreign import javascript unsafe "$r = $1.key || String.fromCharCode($1.keyCode);" get_event_char :: JSVal -> IO JSString
 foreign import javascript unsafe "$r = $1.clientX;" get_mouse_event_x :: JSVal -> IO Double
 foreign import javascript unsafe "$r = $1.clientY;" get_mouse_event_y :: JSVal -> IO Double
 foreign import javascript unsafe "$r = window.innerWidth;" get_window_w :: IO Double
 foreign import javascript unsafe "$r = window.innerHeight;" get_window_h :: IO Double
 --foreign import javascript "console.log($1);" console_log :: JSString -> IO ()
-foreign import javascript "$r = 'color: rgb(' + String(($1) * 4) + ',' + String(($2) * 4) + ',' + String(($3) * 4) + ');background: rgb(' + String(($4) * 4) + ',' + String(($5) * 4) + ',' + String(($6) * 4) + ');';"
+foreign import javascript "$r = 'color: rgb(' + String(($1) * 4) + ',' + String(($2) * 4) + ',' + String(($3) * 4) + ');background: rgb(' + String(($4) * 4) + ',' + String(($5) * 4) + ',' + String(($6) * 4) + '); display: inline-block; width: 1.17vw; text-align: center;'"
   to_javascript_colorstyle :: Word8 -> Word8 -> Word8 -> Word8 -> Word8 -> Word8 -> IO JSString
 
 foreign import javascript "$1.addEventListener('mousedown', $2);" attach_mousedown_handler :: JSVal -> Callback (JSVal -> IO ()) -> IO ()
@@ -99,8 +100,9 @@ withJavascriptTextIO (JavascriptTextIOT action) = mask $ \restore -> do
 
   -- This div holds everything
   term_div <- liftIO make_div_element
-  liftIO
-    $ set_style term_div "font-family: 'Subbie', monospace; font-size: 1.3em;"
+  liftIO $ set_style
+    term_div
+    "font-family: 'Subbie', monospace; font-size: 1.17vw; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 95vw; text-align: center;"
 
   arr <- liftIO $ IA.newArray
     ((0, 0), (fromIntegral $ terminalW - 1, fromIntegral $ terminalH - 1))
@@ -172,11 +174,12 @@ spanner term_div action = do
   body <- liftIO get_body
   liftIO $ set_style body "background: #000;"
   liftIO $ attach_keydown_handler body callback
-  liftIO $ attach_mousedown_handler body mouse_callback
+  window <- liftIO get_window
+  liftIO $ attach_mousedown_handler window mouse_callback
 
   finally action $ do
     liftIO $ detach_keydown_handler body callback
-    liftIO $ detach_mousedown_handler body mouse_callback
+    liftIO $ detach_mousedown_handler window mouse_callback
     liftIO $ releaseCallback callback
     liftIO $ releaseCallback mouse_callback
 
