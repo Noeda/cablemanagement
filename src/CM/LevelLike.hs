@@ -1,4 +1,5 @@
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
 
@@ -8,11 +9,13 @@ module CM.LevelLike
   , CharToTile(..)
   , TileMemorizer(..)
   , levelFromText
+  , lookForTile
   )
 where
 
 import           CM.Coords
 
+import           Data.Int
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 
@@ -42,6 +45,45 @@ class RelativeCoordinable l coords where
 -- how to turn characters into tiles.
 class CharToTile t where
   charToTile :: Char -> t
+
+-- | Looks for a tile in a circle around some origin.
+--
+-- This relies on `RelativeCoordinable`.
+--
+-- This expands a circle from the original position.
+{-# INLINABLE lookForTile #-}
+lookForTile
+  :: forall l coords block
+   . (RelativeCoordinable l coords, LevelLike l coords block)
+  => coords
+  -> l
+  -> Int  -- ^ Maximum number of blocks to check.
+  -> (coords -> block -> Bool)
+  -> Maybe (coords, block)
+lookForTile origin level max_iterations tester = go 0 max_iterations
+ where
+  go !circle_size !counter =
+    let candidates = concat
+          [ [ (-circle_size, z)
+            , (circle_size , z)
+            , (z           , -circle_size)
+            , (z           , circle_size)
+            ]
+          | z <- [-circle_size .. circle_size]
+          ]
+    in  go2 candidates counter
+   where
+    go2 :: [(Int16, Int16)] -> Int -> Maybe (coords, block)
+    go2 _ !counter | counter <= 0 = Nothing
+    go2 [] !counter               = go (circle_size + 1) counter
+    go2 ((x, y) : rest) !counter =
+      let !c           = Coords2D x y
+          !test_coords = atRelativeCoords level origin c
+          !block       = tileAt level test_coords
+      in  if tester test_coords block
+            then Just (test_coords, block)
+            else go2 rest (counter - 1)
+
 
 {-# INLINABLE levelFromText #-}
 -- | This function makes a level out of a text representation.
