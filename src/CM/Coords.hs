@@ -158,9 +158,9 @@ instance TiledCoordMoving Coords2D where
   {-# INLINE toRight #-}
   toRight _ c = c .+ Coords2D 1 0
   {-# INLINE toLeft #-}
-  toLeft _ c = c .- Coords2D (-1) 0
+  toLeft _ c = c .+ Coords2D (-1) 0
   {-# INLINE toUp #-}
-  toUp _ c = c .- Coords2D 0 (-1)
+  toUp _ c = c .+ Coords2D 0 (-1)
   {-# INLINE toDown #-}
   toDown _ c = c .+ Coords2D 0 1
   {-# INLINE toRightUp #-}

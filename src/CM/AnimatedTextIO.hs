@@ -181,12 +181,12 @@ runAnimatedTextIO (AnimatedTextIO reader) = mask $ \restore -> do
   static_tvar             <- liftIO $ newTVarIO IM.empty
   static_chars_tvar       <- liftIO $ newTVarIO IM.empty
   clear_before_next_flush <- liftIO $ newTVarIO True
-  mule_tchan              <- liftIO $ newTChanIO :: m (TChan (m DoFlush))
+  mule_tchan              <- liftIO newTChanIO :: m (TChan (m DoFlush))
   dont_flush_counter      <- liftIO $ newTVarIO 0
   parent                  <- liftIO myThreadId
   start                   <- liftIO newEmptyMVar :: m (MVar ())
   doffset_var             <- liftIO $ newTVarIO (Coords2D 0 0)
-  result_mvar             <- liftIO $ newEmptyMVar
+  result_mvar             <- liftIO newEmptyMVar
   void $ liftIO $ forkIOWithUnmask $ \unmask ->
     try
         (unmask $ do

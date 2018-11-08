@@ -189,7 +189,7 @@ renderNonVisibleTiles
   -> RelativeRenderView coords
   -> RenderedCoordinates         -- ^ This is used to communicate which coordinates were rendered already and shouldn't be rendered over in this function.
   -> m ()
-renderNonVisibleTiles !world !view !(RenderedCoordinates exclusions) =
+renderNonVisibleTiles !world !view (RenderedCoordinates !exclusions) =
   for_ [disp_top .. disp_bottom] $ \(!y) ->
     for_ [disp_left .. disp_right] $ \(!x) -> do
       let !disp_coords = Coords2D x y
@@ -197,12 +197,12 @@ renderNonVisibleTiles !world !view !(RenderedCoordinates exclusions) =
             world
             (levelStartCoords view)
             (Coords2D (x - center_x) (y - center_y))
-      unless (coords2DToInt disp_coords `IS.member` exclusions) $ do
-        case memorizedTileAt world $ liftLevel level_coords of
-          Nothing             -> return ()
-          Just (tile :: tile) -> do
-            let !drawtile = toRenderedTile tile Obscured
-            drawTile disp_coords drawtile
+      unless (coords2DToInt disp_coords `IS.member` exclusions)
+        $ case memorizedTileAt world $ liftLevel level_coords of
+            Nothing             -> return ()
+            Just (tile :: tile) -> do
+              let !drawtile = toRenderedTile tile Obscured
+              drawTile disp_coords drawtile
  where
   Coords2D !disp_left !disp_top = relativeTopLeft view
   Coords2D !disp_right !disp_bottom =
@@ -220,9 +220,9 @@ data Quadrant = TopLeft | TopRight | BottomLeft | BottomRight
 -- internal function used for computeRaycastViews
 transformQuadrant :: Num a => Quadrant -> a -> a -> (a, a)
 transformQuadrant TopLeft     x y = (x, y)
-transformQuadrant TopRight    x y = ((-x), y)
-transformQuadrant BottomLeft  x y = (x, (-y))
-transformQuadrant BottomRight x y = ((-x), (-y))
+transformQuadrant TopRight    x y = (-x, y)
+transformQuadrant BottomLeft  x y = (x, -y)
+transformQuadrant BottomRight x y = (-x, -y)
 
 packCoordinates :: [[Coords2D]] -> PrecomputedRays
 packCoordinates coords = PrecomputedRays $ runST $ do
@@ -244,7 +244,7 @@ packCoordinates coords = PrecomputedRays $ runST $ do
     return idx
   vec_len    = sum (fmap length reordered) * 2 + length reordered
   reordered  = reordered'
-  reordered' = fmap reverse $ reverse coords
+  reordered' = reverse <$> reverse coords
 
 newtype PrecomputedRays = PrecomputedRays (VU.Vector Int)
   deriving ( Show )
@@ -291,13 +291,12 @@ computeRaycastViews (Coords2D tw th) =
         fillGaps
  where
   initial_uncovered_coords :: S.Set Coords2D
-  initial_uncovered_coords =
-    S.fromList
-      $ [ Coords2D x y
-        | x <- [0 .. tw - 1]
-        , y <- [0 .. th - 1]
-        , x /= center_x || y /= center_y
-        ]
+  initial_uncovered_coords = S.fromList
+    [ Coords2D x y
+    | x <- [0 .. tw - 1]
+    , y <- [0 .. th - 1]
+    , x /= center_x || y /= center_y
+    ]
 
   Coords2D !center_x !center_y = Coords2D (tw `div` 2) (th `div` 2)
   center_x05 :: Double
@@ -324,9 +323,9 @@ computeRaycastViews (Coords2D tw th) =
                                      target_x05
                                      target_y05
               !remove_it = dist <= 0.27001
-          modify $ \(set, (front : rest)) ->
-            ( (if remove_it then S.delete (Coords2D x y) set else set)
-            , ((Coords2D x y) : front) : rest
+          modify $ \(set, front : rest) ->
+            ( if remove_it then S.delete (Coords2D x y) set else set
+            , (Coords2D x y : front) : rest
             )
 
   manhattan x y = abs x + abs y

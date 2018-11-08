@@ -30,6 +30,7 @@ library
                        CM.MonotonicTime
                        CM.WorldLike
                        CM.PortableTextIO
+                       CM.Chain
   if !impl(ghcjs)
     exposed-modules:   CM.TerminalTextIO
     c-sources:         cbits/terminal.c
@@ -69,6 +70,7 @@ test-suite cablemanagement-tests
   type:                exitcode-stdio-1.0
   main-is:             Main.hs
   other-modules:       CM.TextIO.Tests
+                       CM.Chain.Tests
   build-depends:       base >=4.9 && <5.0,
                        cablemanagement,
                        test-framework,

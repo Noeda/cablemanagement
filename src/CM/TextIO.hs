@@ -26,7 +26,6 @@ import           Control.Monad
 import           Data.Bits
 import           Data.Data
 import           Data.Foldable
-import           Data.Monoid
 import           Data.Semigroup
 import           Data.String
 import qualified Data.Text                     as T
@@ -75,7 +74,7 @@ instance Monoid AttributedText where
   PlainText "" `mappend` x = x
   x `mappend` PlainText "" = x
   PlainText x `mappend` PlainText y = PlainText (x `mappend` y)
-  SetAttributes _ `mappend` snd@(SetAttributes{}) = snd
+  SetAttributes _ `mappend` snd@SetAttributes{} = snd
   x `mappend` y = Seq x y
 
 -- | Puts some text on a `TextIO`.
