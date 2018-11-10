@@ -40,8 +40,8 @@ data Coords2D = Coords2D {-# UNPACK #-} !Int16 {-# UNPACK #-} !Int16
 coords2DToInt :: Coords2D -> Int
 coords2DToInt (Coords2D x y) =
   fromIntegral
-    $   ((fromIntegral x :: Word32) `shiftL` 16)
-    .|. (fromIntegral y :: Word32)
+    $   ((fromIntegral x .&. 0x0000ffff :: Word32) `shiftL` 16)
+    .|. (fromIntegral y .&. 0x0000ffff :: Word32)
 
 {-# INLINE intToCoords2D #-}
 intToCoords2D :: Int -> Coords2D

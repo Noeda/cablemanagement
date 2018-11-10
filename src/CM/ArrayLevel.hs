@@ -37,6 +37,10 @@ import           CM.LevelLike
 newtype ArrayLevel tile = ArrayLevel (A.Array Coords2D tile)
   deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic )
 
+instance (Eq tile, Default tile) => LevelLikeIterable (ArrayLevel tile) Coords2D tile where
+  {-# INLINE listBlocks #-}
+  listBlocks (ArrayLevel !arr) = A.assocs arr
+
 -- | `setTile` is extremely inefficient for `ArrayLevel`. It creates an entire
 -- new copy from scratch. Avoid using `ArrayLevel` if you need to ever modify
 -- the level.

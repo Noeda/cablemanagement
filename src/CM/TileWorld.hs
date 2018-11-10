@@ -49,6 +49,11 @@ data WorldLevel tile
   | ArrayLevel !(ArrayLevel tile)
   deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic )
 
+instance (Default tile, Eq tile) => LevelLikeIterable (WorldLevel tile) Coords2D tile where
+  {-# INLINE listBlocks #-}
+  listBlocks (IMapLevel lvl) = listBlocks lvl
+  listBlocks (ArrayLevel lvl) = listBlocks lvl
+
 instance (Default tile, Eq tile) => LevelLike (WorldLevel tile) Coords2D tile where
   {-# INLINE tileAt #-}
   tileAt (IMapLevel lvl) coords = tileAt lvl coords
@@ -183,6 +188,15 @@ instance (Default tile, Eq tile) => TilePortalWorldLike (TileWorld tile) where
      in (world { levels = IM.insert index (LevelNode { level = lvl, portals = IM.empty }) (levels world)
            , runningIndex = index + 1 }
         ,\coords -> WorldCoords2D index (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
+
+instance (Default tile, Eq tile) => LevelLikeIterable (TileWorld tile) WorldCoords2D tile where
+  {-# INLINEABLE listBlocks #-}
+  listBlocks !world =
+    concat $ foldl' folder [] (IM.assocs $ levels world)
+   where
+    folder accum (level_key, node) =
+      ((\(coords, block) -> (WorldCoords2D level_key (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle), block)) <$>
+      listBlocks (level node)):accum
 
 instance (Default tile, Eq tile) => LevelLike (TileWorld tile) WorldCoords2D tile where
   {-# INLINEABLE tileAt #-}

@@ -5,6 +5,7 @@
 
 module CM.LevelLike
   ( LevelLike(..)
+  , LevelLikeIterable(..)
   , RelativeCoordinable(..)
   , CharToTile(..)
   , TileMemorizer(..)
@@ -25,6 +26,14 @@ class LevelLike l coords block | l -> coords block where
   setTile      :: l -> coords -> block -> l
   fromPairList :: [(coords, block)] -> l
   empty        :: l
+
+-- | Class of level-like things that can iterate their blocks.
+class LevelLike l coords block => LevelLikeIterable l coords block where
+  -- | This should return the list of blocks in a level.
+  --
+  -- Some levels are infinite, where some "default" block is not stored.
+  -- `listBlocks` is not guaranteed to return such blocks.
+  listBlocks :: l -> [(coords, block)]
 
 -- | Class of levels (or well, it doesn't really have to be levels) that can
 -- memorize previously seen tiles in some way.
