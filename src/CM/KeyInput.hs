@@ -48,6 +48,16 @@ data Key
   | KeyX
   | KeyY
   | KeyZ
+  | Key0
+  | Key1
+  | Key2
+  | Key3
+  | Key4
+  | Key5
+  | Key6
+  | Key7
+  | Key8
+  | Key9
   | KeyArrowLeft
   | KeyArrowUp
   | KeyArrowRight
@@ -110,6 +120,16 @@ charToKey 'W' = Just KeyW
 charToKey 'X' = Just KeyX
 charToKey 'Y' = Just KeyY
 charToKey 'Z' = Just KeyZ
+charToKey '0' = Just Key0
+charToKey '1' = Just Key1
+charToKey '2' = Just Key2
+charToKey '3' = Just Key3
+charToKey '4' = Just Key4
+charToKey '5' = Just Key5
+charToKey '6' = Just Key6
+charToKey '7' = Just Key7
+charToKey '8' = Just Key8
+charToKey '9' = Just Key9
 charToKey _   = Nothing
 
 class KeyInteractiveIO m where
