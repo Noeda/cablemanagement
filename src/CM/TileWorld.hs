@@ -96,8 +96,7 @@ data TileWorld tile = TileWorld
 
 -- | This is the type of a key than can be referred to a level inside
 -- `TileWorld`.
-newtype TileWorldLevelKey = TileWorldLevelKey Int
-  deriving ( Eq, Ord, Show, Typeable, Data, Generic )
+type TileWorldLevelKey = Int
 
 -- | World coordinates.
 --
@@ -159,6 +158,7 @@ instance (Default tile, Eq tile) => TilePortalWorldLike (TileWorld tile) where
   type WorldPortalCoords (TileWorld tile) = WorldSimpleCoords2D
   type LevelCoords (TileWorld tile) = Coords2D
   type LevelKey (TileWorld tile) = TileWorldLevelKey
+  type LevelSnapshot (TileWorld tile) = LevelNode tile
   type Level (TileWorld tile) = WorldLevel tile
 
   toPortalCoords _ (WorldCoords2D index swizz) = WorldSimpleCoords2D index (toCoords2D swizz)
@@ -174,14 +174,20 @@ instance (Default tile, Eq tile) => TilePortalWorldLike (TileWorld tile) where
    where
     source_coords = toCoords2D swizzled
 
-  setLevel (TileWorldLevelKey index) level world =
+  setLevel index level world =
     (world { levels = IM.insert index (LevelNode { level = level, portals = IM.empty }) (levels world) }
     ,\coords -> WorldCoords2D index (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
+
+  getLevelSnapshot index world =
+    IM.lookup index (levels world)
+
+  setLevelSnapshot index lvl world =
+    world { levels = IM.insert index lvl (levels world) }
 
   initial =
     let initial_running_index = 0
      in (TileWorld { runningIndex = initial_running_index, levels = IM.empty, tileMemory = M.empty },
-         TileWorldLevelKey initial_running_index)
+         initial_running_index)
 
   addLevel lvl world =
     let index = runningIndex world
@@ -225,7 +231,7 @@ instance (Default tile, Eq tile) => LevelLike (TileWorld tile) WorldCoords2D til
      in foldl' folder world level_pairlists
    where
     folder world (level_key, pairlist) =
-      fst $ setLevel (TileWorldLevelKey level_key) (IMapLevel $ fromPairList pairlist) world
+      fst $ setLevel level_key (IMapLevel $ fromPairList pairlist) world
 
 -- | Utility function to implement `fromPairList` correctly for `TileWorld`, it
 -- splits a pair list constructed on `WorldCoords2D` to `Coords2D`, for each
@@ -244,6 +250,35 @@ splitWorldCoordedToCoords = foldl' folder IM.empty
 -- coordinate moving.
 data AnyTileWorld = forall a. AnyTileWorld (TileWorld a)
 
+instance TiledCoordMoving WorldSimpleCoords2D where
+  type Context WorldSimpleCoords2D = AnyTileWorld
+
+  {-# INLINE toRight #-}
+  toRight tworld (WorldSimpleCoords2D level_key coords) =
+    toSimpleCoords $ toRight tworld (WorldCoords2D level_key (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
+  {-# INLINE toLeft #-}
+  toLeft tworld (WorldSimpleCoords2D level_key coords) =
+    toSimpleCoords $ toLeft tworld (WorldCoords2D level_key (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
+  {-# INLINE toUp #-}
+  toUp tworld (WorldSimpleCoords2D level_key coords) =
+    toSimpleCoords $ toUp tworld (WorldCoords2D level_key (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
+  {-# INLINE toDown #-}
+  toDown tworld (WorldSimpleCoords2D level_key coords) =
+    toSimpleCoords $ toDown tworld (WorldCoords2D level_key (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
+
+  {-# INLINE toRightUp #-}
+  toRightUp tworld (WorldSimpleCoords2D level_key coords) =
+    toSimpleCoords $ toRightUp tworld (WorldCoords2D level_key (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
+  {-# INLINE toRightDown #-}
+  toRightDown tworld (WorldSimpleCoords2D level_key coords) =
+    toSimpleCoords $ toRightDown tworld (WorldCoords2D level_key (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
+  {-# INLINE toLeftUp #-}
+  toLeftUp tworld (WorldSimpleCoords2D level_key coords) =
+    toSimpleCoords $ toLeftUp tworld (WorldCoords2D level_key (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
+  {-# INLINE toLeftDown #-}
+  toLeftDown tworld (WorldSimpleCoords2D level_key coords) =
+    toSimpleCoords $ toLeftDown tworld (WorldCoords2D level_key (SwizzCoords2D coords Rot0 NoSwizzle NoSwizzle))
+
 -- | The context uses `AnyTileWorld`. You can use `liftLevel` to turn a
 -- polymorphic `TileWorld` type to `AnyTileWorld`.
 instance TiledCoordMoving WorldCoords2D where
@@ -251,13 +286,20 @@ instance TiledCoordMoving WorldCoords2D where
 
   {-# INLINE toRight #-}
   toRight = moveWorldCoords (toRight ()) [OnLeft]
+  {-# INLINE toLeft #-}
   toLeft = moveWorldCoords (toLeft ()) [OnRight]
+  {-# INLINE toUp #-}
   toUp = moveWorldCoords (toUp ()) [OnBottom]
+  {-# INLINE toDown #-}
   toDown = moveWorldCoords (toDown ()) [OnTop]
 
+  {-# INLINE toRightUp #-}
   toRightUp = moveWorldCoords (toRightUp ()) [OnLeft, OnBottom]
+  {-# INLINE toRightDown #-}
   toRightDown = moveWorldCoords (toRightDown ()) [OnLeft, OnTop]
+  {-# INLINE toLeftUp #-}
   toLeftUp = moveWorldCoords (toLeftUp ()) [OnRight, OnBottom]
+  {-# INLINE toLeftDown #-}
   toLeftDown = moveWorldCoords (toLeftDown ()) [OnRight, OnTop]
 
 

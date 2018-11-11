@@ -34,6 +34,7 @@ class TilePortalWorldLike w where
   type LevelCoords w
   type LevelKey w
   type Level w
+  type LevelSnapshot w
 
   -- | Adds a new portal to the world.
   addPortal :: WorldCoords w                     -- ^ Where to place the portal.
@@ -56,6 +57,11 @@ class TilePortalWorldLike w where
            -> Level w
            -> w
            -> (w, LevelCoords w -> WorldCoords w)
+
+  -- | Returns the underlying level in a world, so that it can be used to
+  -- replace another level. Use with `setLevelSnapshot`.
+  getLevelSnapshot :: LevelKey w -> w -> Maybe (LevelSnapshot w)
+  setLevelSnapshot :: LevelKey w -> LevelSnapshot w -> w -> w
 
   -- | Returns a world with one empty level, and a key to that level.
   initial :: (w, LevelKey w)
