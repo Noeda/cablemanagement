@@ -30,6 +30,7 @@ where
 import           Data.Data
 import           Data.Default.Class
 import           Data.Foldable
+import qualified Data.IntSet                   as IS
 import qualified Data.IntMap.Strict            as IM
 import qualified Data.Map.Strict               as M
 import           Data.Maybe
@@ -302,6 +303,70 @@ instance TiledCoordMoving WorldCoords2D where
   {-# INLINE toLeftDown #-}
   toLeftDown = moveWorldCoords (toLeftDown ()) [OnRight, OnTop]
 
+-- | This functions gets the set of all level keys in a world.
+--
+-- This includes level keys from portals or memory, so this can contain keys
+-- for levels that are not actually there.
+allLevelKeys :: TileWorld tile -> IS.IntSet
+allLevelKeys world =
+  -- level keys
+  IM.keysSet (levels world)
+    <>
+  -- keys referred to in level memory
+       (IS.fromList $ fmap (\(WorldSimpleCoords2D level_key _) -> level_key)
+                           (M.keys (tileMemory world))
+       )
+    <>
+  -- keys in portal target
+       (   IS.fromList
+       $   concat
+       $   concat
+       $   fmap
+             (\map ->
+               fmap
+                   (\(TilePortal _ _ _ _ (WorldSimpleCoords2D level_key _)) ->
+                     level_key
+                   )
+                 $ M.elems map
+             )
+       .   IM.elems
+       .   portals
+       <$> IM.elems (levels world)
+       )
+
+
+-- | The semigroup instance will treat two worlds as separate. The world on
+-- right side will have its level keys re-numbered to prevent clashes with the
+-- world on left side. This means all level keys to the second world are
+-- invalidated on append.
+instance Semigroup (TileWorld tile) where
+  world1 <> world2 = combined_world { runningIndex = key2_to_key1 highest_world2_key + 1 }
+   where
+    combined_world = world1 {
+        levels = levels world1 <> remapped_levels,
+        tileMemory = tileMemory world1 <> remapped_memory
+      }
+
+    -- sidenote: Might be useful to lensify traversals on keys later
+    -- Would make remapping level keys much simpler.
+
+    remapped_levels' = IM.mapKeys key2_to_key1 (levels world2)
+    remapped_levels = flip fmap remapped_levels' $ \node ->
+      node { portals = flip fmap (portals node) $ fmap $ \(TilePortal ori rot hswizz vswizz (WorldSimpleCoords2D tgt coords)) -> TilePortal ori rot hswizz vswizz (WorldSimpleCoords2D (key2_to_key1 tgt) coords) }
+
+    remapped_memory = M.mapKeys (\(WorldSimpleCoords2D key coords) -> WorldSimpleCoords2D (key2_to_key1 key) coords) (tileMemory world2)
+
+    key2_to_key1 key = key - lowest_world2_key + highest_world1_key + 1
+
+    world1_level_keys :: IS.IntSet
+    world1_level_keys = allLevelKeys world1
+
+    world2_level_keys :: IS.IntSet
+    world2_level_keys = allLevelKeys world2
+
+    lowest_world2_key = if IS.null world2_level_keys then 0 else IS.findMin world2_level_keys
+    highest_world2_key = if IS.null world2_level_keys then 0 else IS.findMax world2_level_keys
+    highest_world1_key = if IS.null world1_level_keys then 0 else IS.findMax world1_level_keys
 
 -- | A function that jumps through a portal.
 --
