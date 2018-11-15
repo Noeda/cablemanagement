@@ -1,19 +1,31 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE BangPatterns #-}
 
 module CM.WorldLike
   ( TilePortalWorldLike(..)
   , worldFromText
+  , WBuilder()
+  , worldFromBuilder
+  , putLevel
+  , putLevelOverrides
+  , makePortalGroup
+  , PortalGroup()
   )
 where
 
+import           Control.Monad.Fix
 import           Control.Monad.Trans.State.Strict
 import           Data.Char
+import           Data.Data
 import           Data.Default.Class
 import           Data.Foldable
+import qualified Data.IntMap.Strict            as IM
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Proxy
@@ -21,6 +33,7 @@ import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import           Data.Traversable
 import qualified Data.Map.Strict               as M
+import           GHC.Generics
 
 import           CM.Coords
 import           CM.LevelLike
@@ -78,6 +91,161 @@ initialBuilder :: TilePortalWorldLike w => WorldBuilderState w
 initialBuilder =
   let (w, key) = initial
   in  WorldBuilderState {world = w, nextIndex = key, portalPlacements = M.empty}
+
+data WBuilderState w = WBuilderState
+  { portalGroups :: IM.IntMap (M.Map Char TileOrientation)
+  , levelBuilds :: IM.IntMap (Level w, M.Map (Int, Char) (Coords2D, TileOrientation))
+  , runningIndex :: Int }
+
+emptyWBuilderState :: WBuilderState w
+emptyWBuilderState = WBuilderState
+  { portalGroups = IM.empty
+  , levelBuilds  = IM.empty
+  , runningIndex = 0
+  }
+
+newtype WBuilder w a = WBuilder (State (WBuilderState w) a)
+  deriving ( Functor, Applicative, Monad, MonadFix )
+
+data PortalGroup = PortalGroup Int (M.Map Char TileOrientation)
+  deriving ( Eq, Ord, Show, Typeable, Data, Generic )
+
+makePortalGroup :: [(Char, TileOrientation)] -> WBuilder w PortalGroup
+makePortalGroup (M.fromList -> pgroup) = WBuilder $ do
+  st <- get
+  put $ st { portalGroups = IM.insert (runningIndex st) pgroup (portalGroups st)
+           , runningIndex = runningIndex st + 1
+           }
+  return $ PortalGroup (runningIndex st) pgroup
+
+putLevel
+  :: forall tile w
+   . (CharToTile tile, LevelLike (Level w) Coords2D tile)
+  => [PortalGroup]
+  -> [Text]
+  -> WBuilder w ()
+putLevel group texts = putLevelOverrides group texts ([] :: [(Char, tile)])
+
+putLevelOverrides
+  :: (CharToTile tile, LevelLike (Level w) Coords2D tile)
+  => [PortalGroup]
+  -> [Text]
+  -> [(Char, tile)]
+  -> WBuilder w ()
+putLevelOverrides portal_groups texts (M.fromList -> overrides) =
+  WBuilder $ modify $ \old -> old
+    { levelBuilds  = IM.insert (runningIndex old)
+                               (lvl, portal_map)
+                               (levelBuilds old)
+    , runningIndex = runningIndex old + 1
+    }
+ where
+  lookup_portals ch
+    = let lookups = catMaybes $ fmap
+            (\(PortalGroup portal_key portal_map) ->
+              (,) portal_key <$> M.lookup ch portal_map
+            )
+            portal_groups
+      in
+        case lookups of
+          []                  -> Nothing
+          [(portal_key, rot)] -> Just (portal_key, rot)
+          _ ->
+            error $ "putLevelOverrides: portal character ambiguous: " <> show ch
+
+  (lvl, portal_map)
+    = let
+        (pairlist, map) =
+          flip execState ([], M.empty)
+            $ for_ (zip [0 ..] texts)
+            $ \(y, txt) -> for_ (zip [0 ..] $ T.unpack txt) $ \(x, ch) -> do
+                case lookup_portals ch of
+                  Nothing -> do
+                    let !tile =
+                          fromMaybe (charToTile ch) $ M.lookup ch overrides
+                    modify $ \(pairlist, map) ->
+                      ((Coords2D x y, tile) : pairlist, map)
+                  Just (portal_key, port) -> modify $ \(pairlist, map) ->
+                    ( pairlist
+                    , M.insert (portal_key, ch) (Coords2D x y, port) map
+                    )
+      in  (fromPairList pairlist, map)
+
+toggleLowerUpper :: Char -> Char
+toggleLowerUpper ch =
+  let lch = toLower ch
+      uch = toUpper ch
+  in  if lch == uch
+        then
+          error
+          $  "toggleLowerUpper: character "
+          <> show ch
+          <> " does not have upper/lowercase."
+        else (if ch /= lch then lch else uch)
+
+worldFromBuilder
+  :: forall w w'
+   . ( TilePortalWorldLike w
+     , LevelCoords w ~ Coords2D
+     , TiledCoordMoving (WorldCoords w)
+     , LiftLevel w w'
+     , Context (WorldCoords w) ~ w'
+     )
+  => WBuilder w ()
+  -> w
+worldFromBuilder (WBuilder stateful) =
+  fst
+    $ flip
+        execState
+        ( fst initial :: w
+        , M.empty :: M.Map (Int, Char) (WorldCoords w, TileOrientation)
+        )
+    $ do
+        for_ (levelBuilds built) $ \(lvl, lvl_portal_targets) -> do
+          (st, portal_targets) <- get
+          let (new_world, coordinator) = addLevel lvl st
+              portal_assocs =
+                M.fromList
+                  $ fmap
+                      (\((portals_key, ch), (value, rot)) ->
+                        ((portals_key, ch), (coordinator value, rot))
+                      )
+                  $ M.assocs lvl_portal_targets
+          put (new_world, M.union portal_targets portal_assocs)
+        (_, portal_targets) <- get
+        for_ (M.assocs portal_targets)
+          $ \((portals_key, portal_ch), (wcoordinates, srot)) ->
+              case
+                  M.lookup (portals_key, toggleLowerUpper portal_ch)
+                           portal_targets
+                of
+            -- TODO: somehow communicate a warning.
+            -- The next condition is hit if you put a portal without destination.
+                  Nothing                   -> return ()
+                  Just (tcoordinates, trot) -> do
+                    modify $ \(world, pt) ->
+                      ( addPortal
+                        wcoordinates
+                        ( TilePortal srot Rot0 NoSwizzle NoSwizzle
+                        $ toPortalCoords
+                            (Proxy :: Proxy w)
+                            (nudge tcoordinates (liftLevel world) trot)
+                        )
+                        world
+                      , pt
+                      )
+  where built = execState stateful emptyWBuilderState
+
+nudge
+  :: TiledCoordMoving coords
+  => coords
+  -> Context coords
+  -> TileOrientation
+  -> coords
+nudge coords ctx OnTop    = toUp ctx coords
+nudge coords ctx OnLeft   = toLeft ctx coords
+nudge coords ctx OnRight  = toRight ctx coords
+nudge coords ctx OnBottom = toDown ctx coords
 
 worldFromText
   :: forall w w' tile
