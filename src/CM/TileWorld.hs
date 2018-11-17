@@ -34,7 +34,8 @@ import qualified Data.IntSet                   as IS
 import qualified Data.IntMap.Strict            as IM
 import qualified Data.Map.Strict               as M
 import           Data.Maybe
-import           Data.Monoid
+import           Data.Monoid             hiding ( (<>) )
+import           Data.Semigroup
 import           GHC.Generics
 
 import           CM.Coords

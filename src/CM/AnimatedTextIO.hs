@@ -56,6 +56,10 @@ newtype AnimatedTile_ m tile = AnimatedTile_ (Coords2D -> Double -> m tile)
   deriving ( Functor, Generic, Typeable )
 
 {-# INLINABLE dontFlushWith #-}
+-- | Suppress flushing within the given block.
+--
+-- There's a wart: Do not use `flush` or `getDisplaySize` inside the block or
+-- you may lock up the system.
 dontFlushWith :: AnimatedTextIO m tile a -> AnimatedTextIO m tile a
 dontFlushWith (AnimatedTextIO action) = AnimatedTextIO $ mask $ \restore -> do
   env <- ask
@@ -245,11 +249,7 @@ animator mule_tvar animated_tiles static_tiles static_chars_tvar clear_before_ne
       now <- getMonotonicTime
       let !mseconds = max 0 $ floor $ (next_tick - now) * 500000
       tid <- forkIO $ threadDelay mseconds >> atomically
-        (do
-          flush_counter <- readTVar dont_flush_counter
-          when (flush_counter > 0) retry
-          writeTChan mule_tvar (return DontFlush)
-        )
+        (writeTChan mule_tvar (return DontFlush))
       r <- atomically $ readTChan mule_tvar
       killThread tid
       return r
@@ -261,6 +261,9 @@ animator mule_tvar animated_tiles static_tiles static_chars_tvar clear_before_ne
     go next_previous_tick
 
   refresh = do
+    liftIO $ atomically $ do
+      dont_flush_count <- readTVar dont_flush_counter
+      when (dont_flush_count > 0) retry
     (static, static_chars, tiles, do_clear, doffset) <-
       liftIO
       $   atomically
