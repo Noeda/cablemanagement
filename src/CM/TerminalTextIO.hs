@@ -1,4 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -8,6 +10,10 @@
 
 module CM.TerminalTextIO
   ( withTerminalTextIO
+  , withTerminalTextIOHandle
+  , getRawTerminalSize
+  , withRawTerminalSetup
+  , TerminalTextIOHandle(..)
   , TerminalTextIOT()
   , TerminalTextIO
   , module CM.TextIO
@@ -28,6 +34,7 @@ import qualified Data.ByteString.Builder       as BB
 import qualified Data.ByteString.Lazy          as BL
 import           Data.Char
 import           Data.Coerce
+import           Data.Data
 import           Data.Foldable
 import           Data.Word
 import           Foreign.Marshal.Alloc
@@ -35,6 +42,7 @@ import           Foreign.C.Types
 import           Foreign.Ptr
 import           Foreign.Storable
 import           Foreign.ForeignPtr
+import           GHC.Generics
 import           System.Console.ANSI
 import           System.IO
 
@@ -54,11 +62,12 @@ data TermiosStruct
 data TerminalState = TerminalState
   { displayContents :: !(IA.IOUArray (Word16, Word16) Word64)
   , flushContents :: !(IA.IOUArray (Word16, Word16) Word64)
-  , seenTerminalSize :: !Coords2D }
+  , seenTerminalSize :: !Coords2D
+  , textHandle :: !TerminalTextIOHandle }
 
-initialTerminalState :: MonadIO m => m TerminalState
-initialTerminalState = do
-  Coords2D w h <- getTerminalSize
+initialTerminalState :: MonadIO m => TerminalTextIOHandle -> m TerminalState
+initialTerminalState tio_handle = do
+  Coords2D w h <- getTerminalSize tio_handle
   flush_array  <- liftIO
     $ IA.newArray ((0, 0), (fromIntegral (w - 1), fromIntegral (h - 1))) 0
   display_array <- liftIO
@@ -67,6 +76,7 @@ initialTerminalState = do
     { displayContents  = display_array
     , flushContents    = flush_array
     , seenTerminalSize = Coords2D w h
+    , textHandle       = tio_handle
     }
 
 newtype TerminalTextIOT m a = TerminalTextIOT (StateT TerminalState m a)
@@ -74,10 +84,8 @@ newtype TerminalTextIOT m a = TerminalTextIOT (StateT TerminalState m a)
 
 type TerminalTextIO = TerminalTextIOT IO
 
-getTerminalSize :: MonadIO m => m Coords2D
-getTerminalSize = liftIO $ alloca $ \w_ptr -> alloca $ \h_ptr -> do
-  get_terminal_size w_ptr h_ptr
-  Coords2D <$> (fromIntegral <$> peek w_ptr) <*> (fromIntegral <$> peek h_ptr)
+getTerminalSize :: MonadIO m => TerminalTextIOHandle -> m Coords2D
+getTerminalSize tio_handle = liftIO $ handleGetsize tio_handle
 
 instance MonadIO m => KeyInteractiveIO (TerminalTextIOT m) where
   waitForKey = liftIO waitForKey
@@ -95,7 +103,7 @@ instance MonadIO m => TiledRenderer (TerminalTextIOT m) (Attributes, Char) where
   clearTiles = clear
 
 instance MonadIO m => TextIO (TerminalTextIOT m) where
-  terminalSize = getTerminalSize
+  terminalSize = getTerminalSize =<< (TerminalTextIOT $ textHandle <$> get)
 
   {-# INLINE setChar #-}
   setChar attributes ch (Coords2D !x !y) = TerminalTextIOT $ do
@@ -120,13 +128,13 @@ instance MonadIO m => TextIO (TerminalTextIOT m) where
     display_size <- liftIO $ IA.getBounds (displayContents st)
     flush_size@(_, (fw, fh)) <- liftIO $ IA.getBounds (flushContents st)
     if flush_size /= display_size
-      then do liftIO $ fullRefresh (flushContents st)
+      then do liftIO $ fullRefresh (flushContents st) (textHandle st)
               new_display_contents <- liftIO $ I.unsafeThaw =<< (M.freeze (flushContents st) :: IO (UA.UArray (Word16, Word16) Word64))
               modify $ \old -> old { displayContents = new_display_contents }
       else liftIO $ do
-             partialRefresh (flushContents st) (displayContents st)
+             partialRefresh (flushContents st) (displayContents st) (textHandle st)
              copyArray (flushContents st) (displayContents st)
-    (Coords2D (fromIntegral -> tw) (fromIntegral -> th)) <- getTerminalSize
+    (Coords2D (fromIntegral -> tw) (fromIntegral -> th)) <- getTerminalSize (textHandle st)
     when (tw /= fw+1 || th /= fh+1) $ do
       new_flush_contents <- liftIO $ IA.newArray ((0, 0), (tw-1, th-1)) 0
       modify $ \old -> old { flushContents = new_flush_contents
@@ -143,16 +151,18 @@ copyArray !src !dst = do
     v <- IA.readArray src idx
     IA.writeArray dst idx v
 
-fullRefresh :: IA.IOUArray (Word16, Word16) Word64 -> IO ()
-fullRefresh !flush_contents = do
+fullRefresh
+  :: IA.IOUArray (Word16, Word16) Word64 -> TerminalTextIOHandle -> IO ()
+fullRefresh !flush_contents !tio_handle = do
   flush_size <- IA.getBounds flush_contents
   for_ (M.range flush_size) $ \idx@(!x, !y) -> do
-    setCursorPosition (fromIntegral y) (fromIntegral x)
+    writeOutputStr tio_handle
+      $ setCursorPositionCode (fromIntegral y) (fromIntegral x)
     !w64 <- IA.readArray flush_contents idx
     let (Color3 !fr !fg !fb, Color3 !br !bg !bb) =
           attributesToColors (coerce w64)
         !ch = chr $ fromIntegral $ (w64 .&. 0xfffffff000000000) `shiftR` 36
-    BL.hPutStr stdout
+    writeOutput tio_handle
       $  BB.toLazyByteString
       $  "\x1b[38;2;"
       <> BB.word8Dec (fr `shiftL` 2)
@@ -173,8 +183,9 @@ fullRefresh !flush_contents = do
 partialRefresh
   :: IA.IOUArray (Word16, Word16) Word64
   -> IA.IOUArray (Word16, Word16) Word64
+  -> TerminalTextIOHandle
   -> IO ()
-partialRefresh !flush_contents !display_contents = do
+partialRefresh !flush_contents !display_contents !tio_handle = do
   flush_size <- IA.getBounds flush_contents
   for_ (M.range flush_size) $ \idx@(!x, !y) -> do
     !flush_w64   <- IA.readArray flush_contents idx
@@ -184,8 +195,9 @@ partialRefresh !flush_contents !display_contents = do
             attributesToColors (coerce flush_w64)
           !ch =
             chr $ fromIntegral $ (flush_w64 .&. 0xfffffff000000000) `shiftR` 36
-      setCursorPosition (fromIntegral y) (fromIntegral x)
-      BL.hPutStr stdout
+      writeOutputStr tio_handle
+        $ setCursorPositionCode (fromIntegral y) (fromIntegral x)
+      writeOutput tio_handle
         $  BB.toLazyByteString
         $  "\x1b[38;2;"
         <> BB.word8Dec (fr `shiftL` 2)
@@ -204,20 +216,48 @@ partialRefresh !flush_contents !display_contents = do
         <> BB.charUtf8 ch
 {-# NOINLINE partialRefresh #-}
 
-withTerminalTextIO :: (MonadMask m, MonadIO m) => TerminalTextIOT m a -> m a
-withTerminalTextIO (TerminalTextIOT action) = mask $ \restore -> do
+data TerminalTextIOHandle = TerminalTextIOHandle
+  { writeOutput :: !(BL.ByteString -> IO ())
+  , writeOutputStr :: !(String -> IO ())
+  , handleGetsize :: !(IO Coords2D) }
+  deriving ( Typeable, Generic )
+
+getRawTerminalSize :: IO Coords2D
+getRawTerminalSize = alloca $ \w_ptr -> alloca $ \h_ptr -> do
+  get_terminal_size w_ptr h_ptr
+  Coords2D <$> (fromIntegral <$> peek w_ptr) <*> (fromIntegral <$> peek h_ptr)
+
+stdoutTerminalTextIOHandle :: TerminalTextIOHandle
+stdoutTerminalTextIOHandle = TerminalTextIOHandle
+  { writeOutput    = BL.hPutStr stdout
+  , writeOutputStr = hPutStr stdout
+  , handleGetsize  = getRawTerminalSize
+  }
+
+withTerminalTextIOHandle
+  :: (MonadMask m, MonadIO m)
+  => TerminalTextIOHandle
+  -> TerminalTextIOT m a
+  -> m a
+withTerminalTextIOHandle tiohandle (TerminalTextIOT action) = do
+  term_state <- initialTerminalState tiohandle
+  evalStateT action term_state
+
+withRawTerminalSetup :: (MonadMask m, MonadIO m) => m a -> m a
+withRawTerminalSetup action = mask $ \restore -> do
   liftIO hideCursor
   bytes_ptr <- liftIO $ mallocForeignPtrBytes $ fromIntegral sizeof_termios
   liftIO $ withForeignPtr bytes_ptr $ \termios_settings ->
     setup_terminal termios_settings
-
   let rollback_terminal = liftIO $ do
         setSGR [Reset]
         showCursor
         clearScreen
         withForeignPtr bytes_ptr
           $ \termios_settings -> restore_terminal termios_settings
+  finally (restore action) rollback_terminal
 
-  term_state <- initialTerminalState
-
-  finally (restore $ evalStateT action term_state) rollback_terminal
+withTerminalTextIO :: (MonadMask m, MonadIO m) => TerminalTextIOT m a -> m a
+withTerminalTextIO (TerminalTextIOT action) = withRawTerminalSetup $ do
+  term_state <- initialTerminalState stdoutTerminalTextIOHandle
+  evalStateT action term_state
