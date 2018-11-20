@@ -179,6 +179,7 @@ fullRefresh !flush_contents !tio_handle = do
       <> BB.word8Dec (bb `shiftL` 2)
       <> "m"
       <> BB.charUtf8 ch
+  flushOutput tio_handle
 
 partialRefresh
   :: IA.IOUArray (Word16, Word16) Word64
@@ -214,11 +215,13 @@ partialRefresh !flush_contents !display_contents !tio_handle = do
         <> BB.word8Dec (bb `shiftL` 2)
         <> "m"
         <> BB.charUtf8 ch
+  flushOutput tio_handle
 {-# NOINLINE partialRefresh #-}
 
 data TerminalTextIOHandle = TerminalTextIOHandle
   { writeOutput :: !(BL.ByteString -> IO ())
   , writeOutputStr :: !(String -> IO ())
+  , flushOutput :: IO ()
   , handleGetsize :: !(IO Coords2D) }
   deriving ( Typeable, Generic )
 
@@ -231,6 +234,7 @@ stdoutTerminalTextIOHandle :: TerminalTextIOHandle
 stdoutTerminalTextIOHandle = TerminalTextIOHandle
   { writeOutput    = BL.hPutStr stdout
   , writeOutputStr = hPutStr stdout
+  , flushOutput    = return ()
   , handleGetsize  = getRawTerminalSize
   }
 

@@ -13,11 +13,13 @@ import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Monad
 import qualified Data.ByteString               as B
+import qualified Data.ByteString.Builder       as BB
 import qualified Data.ByteString.Lazy          as BL
 import           Data.Bits
 import           Data.Foldable
 import           Data.Int
 import           Data.Maybe
+import           Data.Monoid
 import           Data.Word
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
@@ -40,14 +42,26 @@ runHGameLauncherServer host port action =
     key_chan      <- newTChanIO
     withAsync (keyReader socket key_chan terminal_size) $ \key_async -> do
       link key_async
-      let thandle = TerminalTextIOHandle
-            { writeOutput    = sendLazy socket
-            , writeOutputStr = send socket . T.encodeUtf8 . T.pack
-            , handleGetsize  = atomically $ do
-              (w, h) <- readTVar terminal_size
-              -- Some denial-of-service protection: don't let terminal become yuuge
-              return $ Coords2D (min 200 $ max 2 w) (min 100 $ max 2 h)
-            }
+      output_buffer <- newTVarIO mempty :: IO (TVar BB.Builder)
+      let
+        thandle = TerminalTextIOHandle
+          { writeOutput    = \bl ->
+            atomically $ modifyTVar output_buffer $ \old ->
+              old <> BB.lazyByteString bl
+          , writeOutputStr = \str ->
+            atomically $ modifyTVar output_buffer $ \old ->
+              old <> BB.stringUtf8 str
+          , flushOutput    = do
+            builder <- atomically $ do
+              result <- readTVar output_buffer
+              writeTVar output_buffer mempty
+              return result
+            sendLazy socket $ BB.toLazyByteString builder
+          , handleGetsize  = atomically $ do
+            (w, h) <- readTVar terminal_size
+            -- Some denial-of-service protection: don't let terminal become yuuge
+            return $ Coords2D (min 200 $ max 2 w) (min 100 $ max 2 h)
+          }
       withTerminalTextIOHandle thandle (action key_chan)
 
 keyReader :: Socket -> TChan Key -> TVar (Int16, Int16) -> IO ()
@@ -110,7 +124,7 @@ runHGameLauncherClient host port = do
                 link key_async
                 let
                   outputter = do
-                    bs <- recv socket 1000
+                    bs <- recv socket 100000
                     case bs of
                       Nothing -> return ()
                       Just bytes ->
