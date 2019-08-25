@@ -43,7 +43,7 @@ import           Foreign.Ptr
 import           Foreign.Storable
 import           Foreign.ForeignPtr
 import           GHC.Generics
-import           System.Console.ANSI
+import           System.Console.ANSI     hiding ( getTerminalSize )
 import           System.IO
 
 import           CM.Coords
