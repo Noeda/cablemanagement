@@ -16,6 +16,7 @@ import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Control.Monad.Catch
+import           Control.Monad.Fix
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Reader
 import qualified Data.Array.IO                 as IA
@@ -68,7 +69,11 @@ globalSpans = unsafePerformIO $ newMVar M.empty
 type AttributeArray = IA.IOUArray (Word16, Word16) Word64
 
 newtype JavascriptTextIOT m a = JavascriptTextIOT (ReaderT (AttributeArray, AttributeArray) m a)
-  deriving ( Monad, Applicative, Functor, MonadThrow, MonadCatch, MonadMask )
+  deriving ( Monad, Applicative, Functor, MonadThrow, MonadCatch, MonadMask, MonadFix )
+
+instance MonadTrans JavascriptTextIOT where
+  {-# INLINE lift #-}
+  lift = JavascriptTextIOT . lift
 
 instance MonadIO m => MonadIO (JavascriptTextIOT m) where
   {-# INLINE liftIO #-}

@@ -21,9 +21,10 @@ module CM.TerminalTextIO
 where
 
 import           Control.Monad
-import           Control.Monad.Fix
 import           Control.Monad.Catch
+import           Control.Monad.Fix
 import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.State.Strict
 import qualified Data.Array.IO                 as IA
 import qualified Data.Array.Unboxed            as UA
@@ -81,6 +82,10 @@ initialTerminalState tio_handle = do
 
 newtype TerminalTextIOT m a = TerminalTextIOT (StateT TerminalState m a)
   deriving ( Functor, Applicative, Monad, MonadFix, MonadIO, MonadThrow, MonadCatch, MonadMask )
+
+instance MonadTrans TerminalTextIOT where
+  {-# INLINE lift #-}
+  lift = TerminalTextIOT . lift
 
 type TerminalTextIO = TerminalTextIOT IO
 
